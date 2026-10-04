@@ -187,7 +187,7 @@ graph TD
 
 - **Standard Envelopes**: HTTP endpoints produce standard JSON response envelopes (`{ success: true, data: T, meta?: ... }`).
 - **Mandatory Headers**: Every request propagates `X-Correlation-ID`, `X-User-ID`, and `X-Tenant-ID`.
-- **Timeouts & Circuit Breakers**: All inter-service calls enforce strict timeouts (default: 5000ms for metadata, 60000ms for inference) and exponential backoff retries with jitter for idempotent operations.
+- **Timeouts & Circuit Breakers**: All inter-service calls enforce timeouts (configurable defaults: 5000ms for metadata, 60000ms for inference) and exponential backoff retries with jitter for idempotent operations.
 
 ### 4.9 Async Jobs and Event Communication
 
@@ -262,6 +262,7 @@ Each service and package maintains three testing tiers:
 - **Model Registry (Catalog)**: Owns canonical model definitions, capability flags, pricing tables, and default parameters.
 - **Model Gateway (Egress)**: Owns provider routing, retry budgets, circuit breakers, and streaming normalization.
 - **Clean Decoupling**: The Orchestrator knows only about canonical models; only the Model Gateway knows how to dispatch to providers.
+- **Detailed Specification**: See the authoritative architecture contract in [Model Routing Contract](./contracts/model-routing.md) for complete resolution schemas, dispatch contracts, and failure handling mechanics.
 
 ---
 
