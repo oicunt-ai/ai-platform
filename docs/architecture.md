@@ -262,7 +262,7 @@ Each service and package maintains three testing tiers:
 - **Model Registry (Catalog)**: Owns canonical model definitions, capability flags, pricing tables, and default parameters.
 - **Model Gateway (Egress)**: Owns provider routing, retry budgets, circuit breakers, and streaming normalization.
 - **Clean Decoupling**: The Orchestrator knows only about canonical models; only the Model Gateway knows how to dispatch to providers.
-- **Detailed Specification**: See the authoritative architecture contract in [Model Routing Contract](./contracts/model-routing.md) for complete resolution schemas, dispatch contracts, and failure handling mechanics.
+- **Detailed Specification**: See the authoritative architecture contracts in [Model Routing Contract](./contracts/model-routing.md) and [Model Registry Implementation Contract](./contracts/model-registry.md) for complete resolution schemas, domain aggregates, database ownership, dispatch contracts, and failure handling mechanics.
 
 ---
 
@@ -286,18 +286,18 @@ services/
 
 ### Detailed Service Responsibilities
 
-| Service          | Responsibility                                                                                                                     | Inbound Ports (Interfaces)          | Outbound Ports (Dependencies)                    |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------ |
-| `orchestrator`   | Coordinates conversational turns, prompt assembly, and iterative tool loops. Does not contain provider-specific code.              | HTTP turn endpoint, Event consumers | Model Gateway, Model Registry, Tools, Memory     |
-| `model-gateway`  | The singular provider egress boundary. Normalizes payloads, manages provider fallbacks, enforces rate limits, handles SSE streams. | HTTP completion & stream dispatch   | Provider Adapters (`providers/*`), Observability |
-| `model-registry` | Canonical model catalog. Maintains canonical IDs (`oicunt.model.*`), provider target mappings, context limits, and cost tables.    | HTTP catalog & resolution query     | Database / Configuration store                   |
-| `inference`      | Routes dedicated inference jobs to self-hosted or private model endpoints with priority queuing.                                   | HTTP / gRPC inference request       | Internal model execution runtimes                |
-| `memory`         | Manages conversation memory windows, token summarization, and agent episodic memory state.                                         | HTTP memory query & update          | Dedicated memory storage adapter                 |
-| `knowledge`      | Orchestrates semantic search across enterprise document indices for retrieval-augmented generation.                                | HTTP retrieval query                | Embeddings, Vector index storage                 |
-| `embeddings`     | Synchronous endpoint for text and multimodal vector embedding generation.                                                          | HTTP embedding generation           | Model Gateway / Inference runtime                |
-| `tools`          | Sandboxed execution environment for deterministic tools and platform actions.                                                      | HTTP tool invocation                | Sandboxed container runtime                      |
-| `agents`         | Durable execution engine for multi-step autonomous agents, step state checkpoints, and pause/resume loops.                         | HTTP agent run trigger, Job queue   | Orchestrator, Tools, Memory, Storage             |
-| `mcp`            | Model Context Protocol gateway connecting external tool and resource servers into the AI platform.                                 | MCP stdio/SSE/WebSocket bridges     | Tool runtime, Platform resources                 |
+| Service          | Responsibility                                                                                                                                                                                 | Inbound Ports (Interfaces)          | Outbound Ports (Dependencies)                    |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------ |
+| `orchestrator`   | Coordinates conversational turns, prompt assembly, and iterative tool loops. Does not contain provider-specific code.                                                                          | HTTP turn endpoint, Event consumers | Model Gateway, Model Registry, Tools, Memory     |
+| `model-gateway`  | The singular provider egress boundary. Normalizes payloads, manages provider fallbacks, enforces rate limits, handles SSE streams.                                                             | HTTP completion & stream dispatch   | Provider Adapters (`providers/*`), Observability |
+| `model-registry` | Canonical model catalog. Maintains canonical IDs (`oicunt.model.*`), provider target mappings, context limits, and cost tables (see [Model Registry Contract](./contracts/model-registry.md)). | HTTP catalog & resolution query     | Database / Configuration store                   |
+| `inference`      | Routes dedicated inference jobs to self-hosted or private model endpoints with priority queuing.                                                                                               | HTTP / gRPC inference request       | Internal model execution runtimes                |
+| `memory`         | Manages conversation memory windows, token summarization, and agent episodic memory state.                                                                                                     | HTTP memory query & update          | Dedicated memory storage adapter                 |
+| `knowledge`      | Orchestrates semantic search across enterprise document indices for retrieval-augmented generation.                                                                                            | HTTP retrieval query                | Embeddings, Vector index storage                 |
+| `embeddings`     | Synchronous endpoint for text and multimodal vector embedding generation.                                                                                                                      | HTTP embedding generation           | Model Gateway / Inference runtime                |
+| `tools`          | Sandboxed execution environment for deterministic tools and platform actions.                                                                                                                  | HTTP tool invocation                | Sandboxed container runtime                      |
+| `agents`         | Durable execution engine for multi-step autonomous agents, step state checkpoints, and pause/resume loops.                                                                                     | HTTP agent run trigger, Job queue   | Orchestrator, Tools, Memory, Storage             |
+| `mcp`            | Model Context Protocol gateway connecting external tool and resource servers into the AI platform.                                                                                             | MCP stdio/SSE/WebSocket bridges     | Tool runtime, Platform resources                 |
 
 ---
 
