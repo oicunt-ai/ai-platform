@@ -65,6 +65,8 @@ ai-platform/
 │   ├── document-processing/ # Document parsing, text extraction, and semantic chunking
 │   └── embeddings/          # High-throughput vector embedding generation
 ├── scripts/                 # Operations, maintenance, and verification scripts
+├── templates/               # Reusable AI service blueprints & templates
+│   └── service/             # Canonical microservice starter template
 └── tests/                   # Monorepo integration and foundation tests
 ```
 

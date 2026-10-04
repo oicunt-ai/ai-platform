@@ -11,8 +11,14 @@
       "@oicunt-ai/tool-types": ["./packages/tool-types/src/index.ts"],
       "@oicunt-ai/agent-types": ["./packages/agent-types/src/index.ts"],
       "@oicunt-ai/mcp-types": ["./packages/mcp-types/src/index.ts"],
-      "@oicunt-ai/observability": ["./packages/observability/src/index.ts"]
+      "@oicunt-ai/observability": ["./packages/observability/src/index.ts"],
+      "@oicunt-ai/service-template": ["./templates/service/src/index.ts"]
     }
   },
-  "include": ["packages/*/src/**/*.ts", "tests/**/*.ts"]
+  "include": [
+    "packages/*/src/**/*.ts",
+    "tests/**/*.ts",
+    "templates/*/src/**/*.ts",
+    "templates/*/tests/**/*.ts"
+  ]
 }

@@ -13,12 +13,17 @@ export default defineConfig({
         import.meta.dirname,
         'packages/observability/src/index.ts',
       ),
+      '@oicunt-ai/service-template': resolve(import.meta.dirname, 'templates/service/src/index.ts'),
     },
   },
   test: {
     globals: true,
     environment: 'node',
-    include: ['packages/*/src/**/*.test.ts', 'tests/**/*.test.ts'],
+    include: [
+      'packages/*/src/**/*.test.ts',
+      'tests/**/*.test.ts',
+      'templates/*/tests/**/*.test.ts',
+    ],
     exclude: ['**/node_modules/**', '**/dist/**'],
   },
 });

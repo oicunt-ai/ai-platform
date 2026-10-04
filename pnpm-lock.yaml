@@ -228,6 +228,18 @@ importers:
 
   packages/tool-types: {}
 
+  templates/service:
+    dependencies:
+      '@oicunt-ai/ai-types':
+        specifier: workspace:*
+        version: link:../../packages/ai-types
+      '@oicunt-ai/model-types':
+        specifier: workspace:*
+        version: link:../../packages/model-types
+      '@oicunt-ai/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+
 packages:
 
   '@cacheable/memory@2.2.0':

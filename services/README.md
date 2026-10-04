@@ -16,15 +16,36 @@ Services within this repository own **AI-specific capabilities and infrastructur
   - Organization and tenant management
   - Billing, subscriptions, products, and usage tracking
   - Canonical operational databases, message brokers, and enterprise events
-  - Note: BILLY is the separate OICUNT AI Assistant product repository that consumes platform and ai-platform capabilities.
-- **No Duplication**: The AI Platform must **never** duplicate company-wide services, authentication servers, or external client gateways.
-- **Trusted Upstream Context**: AI services operate behind the platform perimeter. Inbound requests to AI services have already been authenticated by the company platform gateway. Identity headers (`X-User-ID`, `X-Tenant-ID`) are trusted authoritative metadata injected by the platform gateway.
+  - _Note: BILLY is the separate OICUNT AI Assistant product repository that consumes platform and ai-platform capabilities._
+- **No Duplication**: The AI Platform must **never** duplicate company-wide services, authentication servers, billing engines, or external client gateways.
+- **Trusted Upstream Context**: AI services operate behind the platform perimeter. Inbound requests to AI services have already been authenticated by the company platform gateway. Identity headers (`X-User-ID`, `X-Tenant-ID`, `X-Correlation-ID`) are trusted authoritative metadata injected by the platform gateway.
+- **Database-Per-Service Rule**: Services must own their persistent data. Services never share a database or persistent datastore.
+- **Canonical Model Identifiers**: Services communicate using canonical OICUNT model IDs (`oicunt.model.*`) from `@oicunt-ai/model-types`. Raw upstream vendor model names (`gpt-4o`, `claude-3-5-sonnet`) are strictly prohibited in service logic.
+- **Zero Provider SDK Leaks**: Provider SDKs (OpenAI, Anthropic, Google) are strictly confined to `providers/`. Services never import upstream vendor SDKs.
 
 ---
 
-## 2. Planned AI Services Landscape
+## 2. Canonical Hexagonal Architecture
 
-The following services are designated for future milestones. **They are intentionally NOT implemented at this stage**:
+All AI services strictly enforce Clean / Hexagonal Architecture (Ports and Adapters):
+
+```
+interfaces (Inbound Adapters: HTTP routes, controllers, middleware, health probes)
+    ↓
+application (Use Cases, Interactors, Port Interfaces, Input/Output DTOs)
+    ↓
+domain (Entities, Value Objects, Domain Errors, Invariants)
+    ↓
+infrastructure (Outbound Adapters: Persistence, Downstream Clients, Config)
+```
+
+A reusable service template demonstrating this pattern is provided in `templates/service` (`@oicunt-ai/service-template`).
+
+---
+
+## 3. Planned AI Services Landscape
+
+The following 10 services are designated for future implementation milestones:
 
 ```
 services/
@@ -34,38 +55,35 @@ services/
 ├── inference/          # Low-latency model execution routing, batch scheduling, and priority queuing
 ├── memory/             # Working memory, conversational history, and episodic context stores
 ├── knowledge/          # Vector indexing coordination, semantic search orchestration, and knowledge retrieval
-├── embeddings/         # High-throughput vector embedding generation service
+├── embeddings/         # High-throughput vector embedding generation endpoint
 ├── tools/              # Centralized tool execution engine, sandboxing, and permission checks
 ├── agents/             # Autonomous agent state machine, persistent run loops, and task step execution
 └── mcp/                # Model Context Protocol bridge and server connectors
 ```
 
-### Planned Service Summary
+### Detailed Service Specifications
 
-| Service          | Responsibility                                                                                                              | Upstream / Downstream Interaction                                                    |
-| ---------------- | --------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------ |
-| `orchestrator`   | Coordinates conversational turns, determines when to invoke tools, models, or agents.                                       | Receives requests from Platform API Gateway; invokes Model Gateway and Tool runtime. |
-| `model-gateway`  | Normalizes prompt payloads, dispatches to upstream providers via `providers/`, and maps responses to `@oicunt-ai/ai-types`. | Receives requests from Orchestrator; communicates with upstream LLM providers.       |
-| `model-registry` | Maintains catalog of canonical model IDs (`oicunt.model.*`) and their provider targets, pricing, and limits.                | Queried by Orchestrator and Model Gateway.                                           |
-| `inference`      | Routes and manages dedicated inference jobs and local/self-hosted model instances.                                          | Sits downstream of Model Gateway or standalone queue workers.                        |
-| `memory`         | Manages conversation memory windows, summaries, and agent episodic memory.                                                  | Queried and updated by Orchestrator and Agents.                                      |
-| `knowledge`      | Orchestrates search across enterprise indices and documents for retrieval augmentation.                                     | Queried by Orchestrator during RAG turns; feeds from `workers/document-processing`.  |
-| `embeddings`     | Synchronous embedding generation endpoint for search and classification.                                                    | Used by Knowledge service and ingestion pipelines.                                   |
-| `tools`          | Sandboxed execution environment for deterministic and custom tools.                                                         | Invoked by Orchestrator or Agents upon model tool call requests.                     |
-| `agents`         | Long-running autonomous agent lifecycle manager and state persistence.                                                      | Manages background tasks triggered by Platform or user workflows.                    |
-| `mcp`            | Model Context Protocol gateway allowing pluggable tool and resource servers.                                                | Integrates MCP clients with internal AI Platform tool runtime.                       |
+| Service          | Responsibility                                                                                                                     | Inbound Ports (Interfaces)                                             | Outbound Ports (Dependencies)                    | Invariants                                                                                            |
+| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------- | ------------------------------------------------ | ----------------------------------------------------------------------------------------------------- |
+| `orchestrator`   | Coordinates conversational turns, prompt assembly, and iterative tool loops.                                                       | HTTP turn endpoint (`/internal/v1/orchestrator/chat`), Event listeners | Model Gateway, Model Registry, Tools, Memory     | Must contain zero provider-specific code or SDKs. Operates purely on canonical models.                |
+| `model-gateway`  | The singular provider egress boundary. Normalizes payloads, manages provider fallbacks, enforces rate limits, handles SSE streams. | HTTP dispatch endpoint (`/internal/v1/models/dispatch`)                | Provider Adapters (`providers/*`), Observability | The only component authorized to invoke provider adapters. Emits normalized `StreamEvent` SSE events. |
+| `model-registry` | Canonical model catalog. Resolves `oicunt.model.*` identifiers into provider targets, limits, and cost tables.                     | HTTP query endpoint (`/internal/v1/models/:modelId`)                   | Registry Database / Config store                 | Authoritative source for canonical model capabilities, pricing, and context window limits.            |
+| `inference`      | Routes dedicated inference jobs to self-hosted or private model endpoints with priority queuing.                                   | HTTP / gRPC inference request                                          | Internal model execution runtimes                | Manages local GPU inference pools without exposing vendor APIs.                                       |
+| `memory`         | Manages conversation memory windows, token summarization, and agent episodic memory.                                               | HTTP memory query & update                                             | Dedicated memory storage adapter                 | Isolates memory retrieval and updates per tenant and user.                                            |
+| `knowledge`      | Orchestrates semantic search across enterprise document indices for retrieval-augmented generation.                                | HTTP retrieval query                                                   | Embeddings, Vector index storage                 | Coordinates RAG context retrieval; feeds from document processing workers.                            |
+| `embeddings`     | Synchronous endpoint for text and multimodal vector embedding generation.                                                          | HTTP embedding generation                                              | Model Gateway / Inference runtime                | Provides fast, low-latency synchronous vector generation.                                             |
+| `tools`          | Sandboxed execution environment for deterministic tools and platform actions.                                                      | HTTP tool invocation                                                   | Sandboxed container runtime                      | Executes tool calls in isolated sandboxes with strict execution timeouts.                             |
+| `agents`         | Durable execution engine for multi-step autonomous agents, step state checkpoints, and pause/resume loops.                         | HTTP agent run trigger, Job queue                                      | Orchestrator, Tools, Memory, Storage             | Enforces step limits (`maxSteps`) and timeout budgets to prevent runaway execution.                   |
+| `mcp`            | Model Context Protocol gateway connecting external tool and resource servers into the AI platform.                                 | MCP stdio/SSE/WebSocket bridges                                        | Tool runtime, Platform resources                 | Bridges MCP protocol framing to internal tool execution interfaces.                                   |
 
 ---
 
-## 3. Service Implementation Guidelines (For Future Milestones)
+## 4. Implementation Guidelines (For Future Milestones)
 
 When implementing services in future phases:
 
-1. **Hexagonal Architecture (Ports and Adapters)**:
-   - Each service maintains strict separation: `domain/` (pure business logic), `application/` (use cases, ports), `infrastructure/` (adapters, persistence, clients), `interfaces/` (HTTP/gRPC endpoints).
-2. **Database-Per-Service Rule**:
-   - Services must never share a database or persistent datastore.
-3. **Canonical Type Adoption**:
-   - Services must consume contracts from `packages/*` (`@oicunt-ai/model-types`, `@oicunt-ai/ai-types`, etc.) rather than defining bespoke representations.
-4. **Structured Observability**:
-   - All services must trace spans with `@oicunt-ai/observability` and propagate `X-Correlation-ID`.
+1. **Scaffold from Template**: Copy and configure `templates/service`.
+2. **Implement Health Probes**: Maintain `/healthz` (liveness) and `/readyz` (readiness).
+3. **Propagate Context**: Extract and forward `X-Correlation-ID`, `X-User-ID`, and `X-Tenant-ID`.
+4. **Use Shared Contracts**: Consume contracts from `packages/*` (`@oicunt-ai/model-types`, `@oicunt-ai/ai-types`, etc.).
+5. **No Provider Leaks**: Never import provider SDKs in any service. All provider communication routes through `model-gateway`.

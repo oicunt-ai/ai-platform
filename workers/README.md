@@ -4,20 +4,30 @@ This directory houses asynchronous background workers and batch processing daemo
 
 ---
 
-## 1. Architectural Role
+## 1. Architectural Role & Principles
 
 Workers execute decoupled, high-latency, or compute-intensive AI operations that must not block synchronous HTTP request threads.
 
-### Boundary Principles
+### Core Worker Invariants
 
-- **Event-Driven & Queue-Driven**: Workers consume jobs from messaging backplanes or job queues, run asynchronously, and publish completion events or write results to designated storage.
-- **Strict Idempotency**: Due to distributed at-least-once delivery guarantees, all worker job handlers must be idempotent.
-- **Decoupled from Company Platform Workers**: General enterprise background jobs (email sending, user billing cycle reconciliations, analytics exports) belong in the company platform repository. Only **AI-specific** processing workloads live here.
-- **Resource Profiling & Isolation**: Workers have dedicated scaling profiles, memory limits, and node selector assignments (including GPU worker pools for embedding generation).
+- **Hexagonal Worker Architecture**: Workers follow the same Clean / Hexagonal Architecture as services:
+  ```
+  interfaces (Job Consumers: Queue subscribers, cron triggers, dead-letter handlers)
+      ↓
+  application (Job Handlers: Batch orchestrator, task use cases, DTOs)
+      ↓
+  domain (Domain Invariants: Chunking rules, agent step state models, retry policies)
+      ↓
+  infrastructure (Outbound Adapters: Vector databases, object storage, event publishers)
+  ```
+- **Strict Idempotency**: Distributed message brokers guarantee at-least-once delivery. All job handlers must be idempotent by checking and recording processed job identifiers.
+- **Decoupled from Company Platform Workers**: General enterprise background jobs (billing reconciliations, email dispatches, user data purges) belong in the company platform repository. Only **AI-specific** processing workloads live here.
+- **Resource Profiling & Isolation**: Workers have dedicated scaling profiles, memory limits, and node selector assignments (including specialized GPU worker pools for batch embedding generation).
+- **Graceful Shutdown**: On `SIGTERM` / `SIGINT`, workers stop consuming new jobs, allow current in-flight tasks to complete within a timeout window, and cleanly flush open connections.
 
 ---
 
-## 2. Worker Boundaries
+## 2. Worker Boundaries Landscape
 
 ```
 workers/
@@ -26,16 +36,18 @@ workers/
 └── agent-jobs/             # Long-running autonomous agent tasks, scheduled runs, and step loops
 ```
 
-| Worker Boundary                                | Primary Responsibility                                                            | Input Contract                        | Output Target                   |
-| ---------------------------------------------- | --------------------------------------------------------------------------------- | ------------------------------------- | ------------------------------- |
-| [`embeddings`](./embeddings)                   | Computes high-throughput vector embeddings for text chunks.                       | Chunk batches & embedding model ID    | Vector index / vector datastore |
-| [`document-processing`](./document-processing) | Ingests documents (PDF, DOCX, Markdown, HTML), parses, extracts, and chunks text. | Document storage URI & parser options | Normalized semantic chunks      |
-| [`agent-jobs`](./agent-jobs)                   | Executes asynchronous multi-step agent workflows and scheduled tasks.             | Agent run context & task payload      | Agent run result & audit events |
+### Detailed Worker Specifications
+
+| Worker Boundary                                | Primary Responsibility                                                                                              | Inbound Contract                                                        | Processing Mechanics                                                                                   | Outbound Target                                        |
+| ---------------------------------------------- | ------------------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------ | ------------------------------------------------------ |
+| [`embeddings`](./embeddings)                   | Computes high-throughput vector embeddings for text chunks in batches.                                              | Chunk batches & canonical embedding model ID (`oicunt.model.embedding`) | Batched vector inference via Model Gateway or dedicated inference runtime. Enforces backpressure.      | Vector index / vector datastore                        |
+| [`document-processing`](./document-processing) | Ingests documents (PDF, DOCX, XLSX, HTML, TXT), parses structure, extracts text/OCR, and applies semantic chunking. | Document storage URI & parser options                                   | Sandboxed document extraction; hierarchical token chunking preserving section provenance.              | Normalized semantic chunks emitted to embeddings queue |
+| [`agent-jobs`](./agent-jobs)                   | Executes asynchronous multi-step agent workflows and scheduled tasks.                                               | Agent run context (`AgentRunContext`) & task payload                    | ReAct execution loop (thought &rarr; action &rarr; observation). Checkpoints intermediate step states. | Agent run result (`AgentRunResult`) & audit events     |
 
 ---
 
-## 3. Implementation Status
+## 3. Worker Implementation Standards (For Future Milestones)
 
-> [!NOTE]
-> In accordance with the repository foundation milestones, **no concrete worker implementations, queues, or consumers are created yet**.
-> Dedicated worker implementations will be added during their respective architectural slices.
+1. **Dead-Letter Queues (DLQ)**: Every worker pipeline must define a maximum retry budget with exponential backoff before routing failed jobs to a DLQ for inspection.
+2. **Telemetry**: Workers emit batch latency, token usage, and processing success/error counts using `@oicunt-ai/observability`.
+3. **Correlation Tracking**: Workers propagate incoming `correlationId` through all downstream logs, metrics, and published events.

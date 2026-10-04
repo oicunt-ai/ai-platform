@@ -1,6 +1,6 @@
 # OICUNT AI Platform Development Guide
 
-This guide details local environment setup, monorepo workflows, development standards, and contribution processes for the **OICUNT AI Platform**.
+This guide details local environment setup, monorepo workflows, development standards, and service implementation conventions for the **OICUNT AI Platform**.
 
 ---
 
@@ -9,10 +9,10 @@ This guide details local environment setup, monorepo workflows, development stan
 Ensure the following runtimes and tools are installed:
 
 - **Node.js**: `22.x` (Active LTS) or `>=20.0.0`
-- **pnpm**: `12.x` or `>=9.0.0` (Corepack or standalone install: `npm install -g pnpm@12.9.1`)
+- **pnpm**: `12.x` or `>=9.0.0` (Install via Corepack or `npm install -g pnpm@12.9.1`)
 - **Git**: `2.40+`
 
-Verify installations:
+Verify your local installation:
 
 ```bash
 node -v    # Expected: v22.x or >=v20.0.0
@@ -22,18 +22,18 @@ git --version
 
 ---
 
-## 2. Quickstart & Setup
+## 2. Quickstart & Local Verification
 
-Clone the repository and install dependencies:
+Clone the repository and install all dependencies:
 
 ```bash
 git clone https://github.com/oicunt-ai/ai-platform.git
 cd ai-platform
 
-# Install dependencies (respecting pnpm-lock.yaml)
+# Install workspace dependencies (respecting pnpm-lock.yaml)
 pnpm install
 
-# Verify the foundation
+# Run the full verification suite
 pnpm verify
 ```
 
@@ -41,91 +41,109 @@ pnpm verify
 
 ## 3. Monorepo Scripts Reference
 
-All primary commands are executed from the monorepo root:
+All primary commands are run from the monorepo root:
 
-| Command             | Description                                                                            |
-| ------------------- | -------------------------------------------------------------------------------------- |
-| `pnpm install`      | Installs dependencies across all workspaces                                            |
-| `pnpm build`        | Compiles TypeScript packages using project references (`tsc -b`)                       |
-| `pnpm clean`        | Cleans all `dist/`, `coverage/`, and `.tsbuildinfo` artifacts                          |
-| `pnpm format`       | Formats all files with Prettier                                                        |
-| `pnpm format:check` | Checks that all files conform to Prettier formatting                                   |
-| `pnpm lint`         | Runs ESLint across all files                                                           |
-| `pnpm lint:fix`     | Runs ESLint with automated fixes                                                       |
-| `pnpm type-check`   | Type-checks all packages and tests (`tsc -p tsconfig.typecheck.json`)                  |
-| `pnpm test`         | Runs the Vitest test suite once                                                        |
-| `pnpm test:watch`   | Runs Vitest in interactive watch mode                                                  |
-| `pnpm verify`       | Executes the complete local verification suite (format, lint, build, type-check, test) |
+| Command             | Description                                                                             |
+| ------------------- | --------------------------------------------------------------------------------------- |
+| `pnpm install`      | Installs dependencies across all workspaces                                             |
+| `pnpm build`        | Compiles TypeScript packages using project references (`tsc -b`)                        |
+| `pnpm clean`        | Cleans all `dist/`, `coverage/`, and `.tsbuildinfo` artifacts                           |
+| `pnpm format`       | Auto-formats all files using Prettier                                                   |
+| `pnpm format:check` | Checks that all files conform to Prettier formatting                                    |
+| `pnpm lint`         | Runs ESLint static analysis across all files                                            |
+| `pnpm lint:fix`     | Runs ESLint and automatically applies fixes                                             |
+| `pnpm type-check`   | Type-checks all packages, services, and tests (`tsc -p tsconfig.typecheck.json`)        |
+| `pnpm test`         | Runs the Vitest test suite once                                                         |
+| `pnpm test:watch`   | Runs Vitest in interactive watch mode                                                   |
+| `pnpm verify`       | Executes the complete local quality gate suite (format, lint, build, type-check, tests) |
 
 ---
 
-## 4. Package Structure & TypeScript Project References
+## 4. Canonical Service Architecture & Layer Conventions
 
-Every package under `packages/` must adhere to the standard workspace layout:
+All microservices within `services/` must follow the Clean / Hexagonal Architecture established in `templates/service`:
 
 ```
-packages/<package-name>/
-├── package.json        # Workspace configuration, exports, scripts
-├── tsconfig.json       # Extends ../../tsconfig.base.json with rootDir & outDir
-├── README.md           # Package purpose, boundary, and export inventory
-└── src/
-    ├── index.ts        # Primary package exports & types
-    └── index.test.ts   # Unit test verifying exports
+interfaces (Inbound Adapters: HTTP routes, controllers, middleware, health probes)
+    ↓
+application (Use Cases, Interactors, Inbound/Outbound Port Interfaces, DTOs)
+    ↓
+domain (Entities, Aggregates, Domain Errors, Invariants)
+    ↓
+infrastructure (Outbound Adapters: Persistence, Downstream Clients, Config)
 ```
 
-### TypeScript Project References
+### Directory Structure of a Service
 
-Packages utilize TypeScript Project References (`composite: true`) to ensure fast, incremental, and type-safe builds.
+```
+services/<service-name>/
+├── src/
+│   ├── domain/               # Core business invariants, domain errors, entity models
+│   │   ├── errors.ts         # Subclasses of AiDomainError
+│   │   └── index.ts
+│   ├── application/          # Use case interactors, command & query handlers, ports
+│   │   ├── ports.ts          # AiUseCase and outbound port definitions
+│   │   └── index.ts
+│   ├── infrastructure/       # Outbound adapter implementations
+│   │   ├── adapters.ts       # Database repositories, HTTP client proxies
+│   │   └── index.ts
+│   ├── interfaces/           # Inbound adapters (HTTP API, Event Listeners)
+│   │   ├── http/
+│   │   │   ├── health.ts     # Standard /healthz and /readyz probes
+│   │   │   ├── middleware.ts # X-Correlation-ID, X-User-ID, error handler
+│   │   │   └── router.ts     # HTTP request dispatcher
+│   │   └── index.ts
+│   ├── config.ts             # Service configuration schema with fail-fast validation
+│   ├── service.ts            # Service instance lifecycle manager (start, stop, isReady)
+│   └── index.ts              # Composition root & signal handlers
+├── tests/
+│   ├── unit/                 # Domain & application logic tests (isolated, in-memory)
+│   └── integration/          # HTTP probe & adapter tests
+├── package.json
+└── tsconfig.json
+```
 
-When package `B` depends on package `A`:
+### Scaffolding from the Reusable Template
 
-1. In `packages/B/package.json`:
-   ```json
-   "dependencies": {
-     "@oicunt-ai/A": "workspace:*"
-   }
-   ```
-2. In `packages/B/tsconfig.json`:
-   ```json
-   "references": [
-     { "path": "../A" }
-   ]
-   ```
-3. In root `tsconfig.json`:
-   Ensure both `packages/A` and `packages/B` are registered in the root `references` list.
-
----
-
-## 5. Coding & Linting Standards
-
-- **Strict Mode**: TypeScript strict mode is enabled unconditionally (`noImplicitAny`, `strictNullChecks`, `noUncheckedIndexedAccess`, `exactOptionalPropertyTypes`).
-- **No Direct Vendor Types**: Never leak vendor SDK types into shared packages or orchestrators.
-- **Naming Conventions**:
-  - Types/Interfaces: PascalCase (e.g. `NormalizedCompletionRequest`, `TokenUsage`)
-  - Variables/Functions: camelCase (e.g. `recordTokenUsage`, `startSpan`)
-  - Enums/Constants: UPPER_SNAKE_CASE (e.g. `MCP_LATEST_PROTOCOL_VERSION`)
-  - Directories/Files: kebab-case (e.g. `model-types`, `foundation.test.ts`)
-
----
-
-## 6. Testing Guidelines
-
-- Tests use **Vitest** configured with root path resolution.
-- Unit tests (`*.test.ts`) must remain pure in-memory tests with zero disk or network I/O.
-- Test files are placed adjacent to source files (`src/index.test.ts`) or in the root `tests/` directory for cross-package integration tests.
-- Run tests continuously during development:
-  ```bash
-  pnpm test:watch
-  ```
+The repository provides a canonical starter template in `templates/service` (`@oicunt-ai/service-template`). Future services can be scaffolded directly from this structure, ensuring strict adherence to Hexagonal Architecture, health endpoints, correlation context, and error mapping.
 
 ---
 
-## 7. Pre-Commit & PR Verification
+## 5. AI-Specific Engineering Conventions
 
-Before submitting a Pull Request, run the full verification suite:
+1. **Use Canonical Model Identifiers**: Always use model identifiers from `@oicunt-ai/model-types` (e.g. `oicunt.model.general`). Raw upstream vendor names (`gpt-4o`, `claude-3-5-sonnet`) are strictly prohibited in application logic.
+2. **Normalized Requests & Responses**: Inter-service AI calls must exchange `NormalizedCompletionRequest` and `NormalizedCompletionData` from `@oicunt-ai/ai-types`.
+3. **No Provider SDK Leaks**: Provider SDKs (OpenAI, Anthropic, Google) are strictly confined to `providers/`. Never import `@anthropic-ai/sdk`, `openai`, or `@google/genai` in services or shared packages.
+4. **Zero-Trust Observability**: Record token counts, latency, and model metrics using `@oicunt-ai/observability`.
+5. **Database-Per-Service Rule**: Never share a database between services. Services own their persistent storage exclusively.
+6. **No Platform Duplication**: Do not build authentication, user management, billing, subscriptions, products, or usage tracking here. Those belong authoritatively in the company platform repository.
+
+---
+
+## 6. TypeScript Project References Rules
+
+Packages and services utilize TypeScript Project References (`composite: true`) for fast, incremental, and type-safe builds:
+
+1. When workspace `B` depends on workspace `A`:
+   - In `B/package.json`: `"dependencies": { "@oicunt-ai/A": "workspace:*" }`
+   - In `B/tsconfig.json`: `"references": [{ "path": "../A" }]`
+2. In root `tsconfig.json`: Register all project references under `references`.
+3. In root `tsconfig.typecheck.json`: Add module path aliases under `compilerOptions.paths`.
+
+---
+
+## 7. Pre-Commit & PR Quality Gates
+
+Before submitting any Pull Request, run:
 
 ```bash
 pnpm verify
 ```
 
-This ensures format checks, linting, build outputs, type checking, and tests pass with zero warnings and zero errors.
+This verifies that:
+
+- Prettier formatting is satisfied (`pnpm format:check`)
+- ESLint checks pass with zero errors and zero warnings (`pnpm lint`)
+- All packages and templates build cleanly (`pnpm build`)
+- Type checking passes monorepo-wide (`pnpm type-check`)
+- All unit and integration tests pass (`pnpm test`)

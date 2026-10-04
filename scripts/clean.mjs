@@ -12,6 +12,7 @@ const targetDirs = [
   'packages/agent-types/dist',
   'packages/mcp-types/dist',
   'packages/observability/dist',
+  'templates/service/dist',
 ];
 
 for (const target of targetDirs) {
