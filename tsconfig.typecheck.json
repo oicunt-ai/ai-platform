@@ -1,0 +1,18 @@
+{
+  "$schema": "https://json.schemastore.org/tsconfig",
+  "extends": "./tsconfig.base.json",
+  "compilerOptions": {
+    "composite": false,
+    "noEmit": true,
+    "baseUrl": ".",
+    "paths": {
+      "@oicunt-ai/model-types": ["./packages/model-types/src/index.ts"],
+      "@oicunt-ai/ai-types": ["./packages/ai-types/src/index.ts"],
+      "@oicunt-ai/tool-types": ["./packages/tool-types/src/index.ts"],
+      "@oicunt-ai/agent-types": ["./packages/agent-types/src/index.ts"],
+      "@oicunt-ai/mcp-types": ["./packages/mcp-types/src/index.ts"],
+      "@oicunt-ai/observability": ["./packages/observability/src/index.ts"]
+    }
+  },
+  "include": ["packages/*/src/**/*.ts", "tests/**/*.ts"]
+}
