@@ -12,13 +12,16 @@
       "@oicunt-ai/agent-types": ["./packages/agent-types/src/index.ts"],
       "@oicunt-ai/mcp-types": ["./packages/mcp-types/src/index.ts"],
       "@oicunt-ai/observability": ["./packages/observability/src/index.ts"],
-      "@oicunt-ai/service-template": ["./templates/service/src/index.ts"]
+      "@oicunt-ai/service-template": ["./templates/service/src/index.ts"],
+      "@oicunt-ai/service-model-registry": ["./services/model-registry/src/index.ts"]
     }
   },
   "include": [
     "packages/*/src/**/*.ts",
     "tests/**/*.ts",
     "templates/*/src/**/*.ts",
-    "templates/*/tests/**/*.ts"
+    "templates/*/tests/**/*.ts",
+    "services/*/src/**/*.ts",
+    "services/*/tests/**/*.ts"
   ]
 }

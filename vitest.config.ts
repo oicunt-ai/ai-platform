@@ -14,6 +14,10 @@ export default defineConfig({
         'packages/observability/src/index.ts',
       ),
       '@oicunt-ai/service-template': resolve(import.meta.dirname, 'templates/service/src/index.ts'),
+      '@oicunt-ai/service-model-registry': resolve(
+        import.meta.dirname,
+        'services/model-registry/src/index.ts',
+      ),
     },
   },
   test: {
@@ -23,6 +27,7 @@ export default defineConfig({
       'packages/*/src/**/*.test.ts',
       'tests/**/*.test.ts',
       'templates/*/tests/**/*.test.ts',
+      'services/*/tests/**/*.test.ts',
     ],
     exclude: ['**/node_modules/**', '**/dist/**'],
   },

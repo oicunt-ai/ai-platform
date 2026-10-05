@@ -8,6 +8,7 @@
     { "path": "./packages/agent-types" },
     { "path": "./packages/mcp-types" },
     { "path": "./packages/observability" },
-    { "path": "./templates/service" }
+    { "path": "./templates/service" },
+    { "path": "./services/model-registry" }
   ]
 }
