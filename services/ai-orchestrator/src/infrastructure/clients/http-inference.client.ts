@@ -1,6 +1,9 @@
-import type { NormalizedCompletionData, StreamEvent, StreamEventType } from '@oicunt-ai/ai-types';
-import type { GatewayDispatchPayload } from '../../application/dtos/dispatch.dto.js';
-import type { ModelGatewayPort } from '../../application/ports/model-gateway.port.js';
+import type { StreamEvent, StreamEventType } from '@oicunt-ai/ai-types';
+import type {
+  InferenceExecutionRequest,
+  InferenceExecutionResponse,
+} from '../../application/dtos/inference.dto.js';
+import type { InferencePort } from '../../application/ports/inference.port.js';
 import {
   AllTargetsExhaustedError,
   ContextWindowExceededError,
@@ -11,109 +14,106 @@ import {
   type OrchestratorErrorCode,
   RateLimitExceededError,
   RequestCancelledError,
+  UnsupportedEffortLevelError,
 } from '../../domain/errors.js';
 
-export interface HttpModelGatewayClientOptions {
+export interface HttpInferenceClientOptions {
   readonly baseUrl: string;
   readonly internalToken?: string | undefined;
 }
 
-export class HttpModelGatewayClient implements ModelGatewayPort {
+export class HttpInferenceClient implements InferencePort {
   private readonly baseUrl: string;
   private readonly internalToken?: string | undefined;
 
-  constructor(options: HttpModelGatewayClientOptions) {
+  constructor(options: HttpInferenceClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
     this.internalToken = options.internalToken;
   }
 
-  public async dispatchUnary(
-    payload: GatewayDispatchPayload,
+  public async executeUnary(
+    request: InferenceExecutionRequest,
     signal?: AbortSignal,
-  ): Promise<NormalizedCompletionData> {
-    const url = `${this.baseUrl}/internal/v1/models/dispatch`;
-    const headers = this.buildHeaders(payload, 'application/json');
+  ): Promise<InferenceExecutionResponse> {
+    const url = `${this.baseUrl}/internal/v1/inference/execute`;
+    const headers = this.buildHeaders(request, 'application/json');
 
     try {
       const response = await fetch(url, {
         method: 'POST',
         headers,
-        body: JSON.stringify(payload),
+        body: JSON.stringify({ ...request, stream: false }),
         ...(signal ? { signal } : {}),
       });
 
       if (response.ok) {
-        const body = (await response.json()) as {
-          success?: boolean;
-          data?: NormalizedCompletionData;
-        } & NormalizedCompletionData;
-
-        return (body.data ?? body) as NormalizedCompletionData;
+        const body = (await response.json()) as InferenceExecutionResponse;
+        return body;
       }
 
-      await this.handleErrorResponse(response, payload);
+      await this.handleErrorResponse(response, request);
       throw new OrchestratorError(
         'INTERNAL_ORCHESTRATOR_ERROR',
-        'Unexpected execution error',
+        'Unexpected execution error from Inference Service',
         500,
         false,
         undefined,
-        payload.canonicalModelId,
-        payload.correlationId,
+        request.canonicalModelId,
+        request.correlationId,
       );
     } catch (err: unknown) {
       if (signal?.aborted) {
         throw new RequestCancelledError(
           'Inference request was cancelled by the caller.',
-          payload.correlationId,
+          request.correlationId,
         );
       }
       if (err instanceof OrchestratorError) {
         throw err;
       }
-      throw this.mapUnknownError(err, payload);
+      throw this.mapUnknownError(err, request);
     }
   }
 
-  public async *dispatchStream(
-    payload: GatewayDispatchPayload,
+  public async *executeStream(
+    request: InferenceExecutionRequest,
     signal?: AbortSignal,
   ): AsyncIterable<StreamEvent> {
-    const url = `${this.baseUrl}/internal/v1/models/dispatch`;
-    const headers = this.buildHeaders(payload, 'text/event-stream, application/json');
+    const url = `${this.baseUrl}/internal/v1/inference/execute`;
+    const headers = this.buildHeaders(request, 'text/event-stream, application/json');
 
     let response: Response;
     try {
       response = await fetch(url, {
         method: 'POST',
         headers,
-        body: JSON.stringify({ ...payload, stream: true }),
+        body: JSON.stringify({ ...request, stream: true }),
         ...(signal ? { signal } : {}),
       });
     } catch (err: unknown) {
       if (signal?.aborted) {
         throw new RequestCancelledError(
           'Inference request was cancelled by the caller.',
-          payload.correlationId,
+          request.correlationId,
         );
       }
-      throw this.mapUnknownError(err, payload);
+      throw this.mapUnknownError(err, request);
     }
 
     if (!response.ok) {
-      await this.handleErrorResponse(response, payload);
+      await this.handleErrorResponse(response, request);
       return;
     }
 
     if (!response.body) {
       throw new OrchestratorError(
         'INTERNAL_ORCHESTRATOR_ERROR',
-        'Model Gateway response stream was empty',
+        'Inference Service response stream was empty',
         502,
         false,
         undefined,
-        payload.canonicalModelId,
-        payload.correlationId,
+        request.canonicalModelId,
+        request.correlationId,
       );
     }
 
@@ -128,7 +128,7 @@ export class HttpModelGatewayClient implements ModelGatewayPort {
         if (signal?.aborted) {
           throw new RequestCancelledError(
             'Inference request was cancelled by the caller.',
-            payload.correlationId,
+            request.correlationId,
           );
         }
 
@@ -139,13 +139,11 @@ export class HttpModelGatewayClient implements ModelGatewayPort {
 
         buffer += decoder.decode(value, { stream: true });
         const lines = buffer.split('\n');
-        // Keep the last partial line in buffer
         buffer = lines.pop() ?? '';
 
         for (const line of lines) {
           const trimmed = line.trim();
           if (trimmed === '') {
-            // End of an event
             if (currentData !== '') {
               try {
                 const parsedData = JSON.parse(currentData);
@@ -154,7 +152,7 @@ export class HttpModelGatewayClient implements ModelGatewayPort {
                   data: parsedData,
                 } as StreamEvent;
               } catch {
-                // If not valid JSON, treat as string or skip
+                // Ignore parse errors for malformed intermediate data chunks
               }
               currentData = '';
               currentEvent = 'token';
@@ -171,7 +169,6 @@ export class HttpModelGatewayClient implements ModelGatewayPort {
         }
       }
 
-      // Flush any trailing event
       if (currentData !== '') {
         try {
           const parsedData = JSON.parse(currentData);
@@ -180,7 +177,7 @@ export class HttpModelGatewayClient implements ModelGatewayPort {
             data: parsedData,
           } as StreamEvent;
         } catch {
-          // Ignore parse error on flush
+          // Ignore parse errors on trailing flush
         }
       }
     } finally {
@@ -200,21 +197,21 @@ export class HttpModelGatewayClient implements ModelGatewayPort {
     }
   }
 
-  private buildHeaders(payload: GatewayDispatchPayload, accept: string): Record<string, string> {
+  private buildHeaders(request: InferenceExecutionRequest, accept: string): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json; charset=utf-8',
       Accept: accept,
       'X-Service-Name': 'ai-orchestrator',
-      'X-Correlation-ID': payload.correlationId,
-      'X-Request-ID': payload.requestId,
-      'X-Actor-ID': payload.actorId,
+      'X-Correlation-ID': request.correlationId,
+      'X-Request-ID': request.requestId,
+      'X-Actor-ID': request.actorId,
     };
 
-    if (payload.tenantId) {
-      headers['X-Tenant-ID'] = payload.tenantId;
+    if (request.tenantId) {
+      headers['X-Tenant-ID'] = request.tenantId;
     }
-    if (payload.userId) {
-      headers['X-User-ID'] = payload.userId;
+    if (request.userId) {
+      headers['X-User-ID'] = request.userId;
     }
     if (this.internalToken) {
       headers['Authorization'] = `Bearer ${this.internalToken}`;
@@ -225,7 +222,7 @@ export class HttpModelGatewayClient implements ModelGatewayPort {
 
   private async handleErrorResponse(
     response: Response,
-    payload: GatewayDispatchPayload,
+    request: InferenceExecutionRequest,
   ): Promise<never> {
     let errorBody: { error?: { code?: string; message?: string; details?: unknown } } = {};
     try {
@@ -235,28 +232,40 @@ export class HttpModelGatewayClient implements ModelGatewayPort {
     }
 
     const code = errorBody.error?.code ?? '';
-    const message = errorBody.error?.message ?? `Model Gateway returned HTTP ${response.status}`;
+    const message =
+      errorBody.error?.message ?? `Inference Service returned HTTP ${response.status}`;
 
     if (code === 'MODEL_IN_MAINTENANCE') {
-      throw new ModelInMaintenanceError(payload.canonicalModelId, payload.correlationId);
+      throw new ModelInMaintenanceError(request.canonicalModelId, request.correlationId);
     }
     if (code === 'ALL_TARGETS_EXHAUSTED' || code === 'NO_HEALTHY_TARGETS') {
-      throw new AllTargetsExhaustedError(message, payload.correlationId);
+      throw new AllTargetsExhaustedError(message, request.correlationId);
     }
     if (code === 'RATE_LIMIT_EXCEEDED' || response.status === 429) {
-      throw new RateLimitExceededError(message, payload.correlationId);
+      throw new RateLimitExceededError(message, request.correlationId);
     }
     if (code === 'INFERENCE_TIMEOUT' || response.status === 504) {
-      throw new InferenceTimeoutError(message, payload.correlationId);
+      throw new InferenceTimeoutError(message, request.correlationId);
     }
     if (code === 'CONTEXT_WINDOW_EXCEEDED') {
-      throw new ContextWindowExceededError(payload.canonicalModelId, 0, 0, payload.correlationId);
+      throw new ContextWindowExceededError(request.canonicalModelId, 0, 0, request.correlationId);
     }
-    if (code === 'REQUEST_CANCELLED') {
-      throw new RequestCancelledError('Inference cancelled by caller', payload.correlationId);
+    if (code === 'REQUEST_CANCELLED' || response.status === 499) {
+      throw new RequestCancelledError(
+        'Inference request was cancelled by caller',
+        request.correlationId,
+      );
     }
-    if (response.status === 400) {
-      throw new InvalidRequestError(message, payload.correlationId);
+    if (code === 'UNSUPPORTED_EFFORT_LEVEL') {
+      throw new UnsupportedEffortLevelError(
+        request.canonicalModelId,
+        request.effort ?? 'unknown',
+        [],
+        request.correlationId,
+      );
+    }
+    if (response.status === 400 || code === 'INVALID_REQUEST') {
+      throw new InvalidRequestError(message, request.correlationId);
     }
 
     throw new OrchestratorError(
@@ -265,22 +274,22 @@ export class HttpModelGatewayClient implements ModelGatewayPort {
       response.status >= 500 ? 503 : response.status,
       response.status >= 500,
       undefined,
-      payload.canonicalModelId,
-      payload.correlationId,
+      request.canonicalModelId,
+      request.correlationId,
     );
   }
 
-  private mapUnknownError(err: unknown, payload: GatewayDispatchPayload): OrchestratorError {
+  private mapUnknownError(err: unknown, request: InferenceExecutionRequest): OrchestratorError {
     if (err instanceof Error) {
       const msg = err.message.toLowerCase();
       if (msg.includes('abort') || msg.includes('cancel')) {
         return new RequestCancelledError(
           'Inference request was cancelled by the caller.',
-          payload.correlationId,
+          request.correlationId,
         );
       }
       if (msg.includes('timeout')) {
-        return new InferenceTimeoutError(err.message, payload.correlationId);
+        return new InferenceTimeoutError(err.message, request.correlationId);
       }
       return new OrchestratorError(
         'INTERNAL_ORCHESTRATOR_ERROR',
@@ -288,18 +297,18 @@ export class HttpModelGatewayClient implements ModelGatewayPort {
         503,
         true,
         undefined,
-        payload.canonicalModelId,
-        payload.correlationId,
+        request.canonicalModelId,
+        request.correlationId,
       );
     }
     return new OrchestratorError(
       'INTERNAL_ORCHESTRATOR_ERROR',
-      'Unknown Gateway error',
+      'Unknown Inference Service error',
       503,
       true,
       undefined,
-      payload.canonicalModelId,
-      payload.correlationId,
+      request.canonicalModelId,
+      request.correlationId,
     );
   }
 }

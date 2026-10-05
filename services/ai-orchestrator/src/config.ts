@@ -12,7 +12,7 @@ export interface AiOrchestratorConfig {
   readonly allowedServiceIdentities: readonly string[];
   readonly maxBodySizeBytes: number;
   readonly modelRegistryBaseUrl: string;
-  readonly modelGatewayBaseUrl: string;
+  readonly inferenceBaseUrl: string;
   readonly internalToken?: string | undefined;
   readonly defaultTimeoutMs: number;
   readonly maxTimeoutMs: number;
@@ -75,10 +75,8 @@ export function loadAiOrchestratorConfig(
       overrides?.modelRegistryBaseUrl ??
       process.env['MODEL_REGISTRY_BASE_URL'] ??
       'http://localhost:3001',
-    modelGatewayBaseUrl:
-      overrides?.modelGatewayBaseUrl ??
-      process.env['MODEL_GATEWAY_BASE_URL'] ??
-      'http://localhost:3002',
+    inferenceBaseUrl:
+      overrides?.inferenceBaseUrl ?? process.env['INFERENCE_BASE_URL'] ?? 'http://localhost:3004',
     internalToken: overrides?.internalToken ?? process.env['INTERNAL_SERVICE_TOKEN'],
     defaultTimeoutMs:
       overrides?.defaultTimeoutMs ??

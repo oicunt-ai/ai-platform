@@ -1,32 +1,36 @@
-import type { NormalizedCompletionData, StreamEvent } from '@oicunt-ai/ai-types';
-import type { GatewayDispatchPayload } from '../../src/application/dtos/dispatch.dto.js';
-import type { ModelGatewayPort } from '../../src/application/ports/model-gateway.port.js';
+import type { StreamEvent } from '@oicunt-ai/ai-types';
+import type {
+  InferenceExecutionRequest,
+  InferenceExecutionResponse,
+  InferenceResultData,
+} from '../../src/application/dtos/inference.dto.js';
+import type { InferencePort } from '../../src/application/ports/inference.port.js';
 import { RequestCancelledError } from '../../src/domain/errors.js';
 
-export class FakeModelGateway implements ModelGatewayPort {
-  public recordedDispatches: GatewayDispatchPayload[] = [];
-  public customUnaryResponse?: NormalizedCompletionData;
+export class FakeInference implements InferencePort {
+  public recordedRequests: InferenceExecutionRequest[] = [];
+  public customUnaryResponse?: InferenceExecutionResponse;
   public customStreamEvents?: StreamEvent[];
   public shouldFailUnaryWith: Error | null = null;
   public shouldFailStreamWith: Error | null = null;
   public delayMs = 0;
   public isHealthy = true;
 
-  public async dispatchUnary(
-    payload: GatewayDispatchPayload,
+  public async executeUnary(
+    request: InferenceExecutionRequest,
     signal?: AbortSignal,
-  ): Promise<NormalizedCompletionData> {
-    this.recordedDispatches.push(payload);
+  ): Promise<InferenceExecutionResponse> {
+    this.recordedRequests.push(request);
 
     if (this.delayMs > 0) {
-      await new Promise((resolve, reject) => {
+      await new Promise<void>((resolve, reject) => {
         const timeout = setTimeout(resolve, this.delayMs);
         if (signal) {
           signal.addEventListener(
             'abort',
             () => {
               clearTimeout(timeout);
-              reject(new RequestCancelledError('Request cancelled', payload.correlationId));
+              reject(new RequestCancelledError('Request cancelled', request.correlationId));
             },
             { once: true },
           );
@@ -35,7 +39,7 @@ export class FakeModelGateway implements ModelGatewayPort {
     }
 
     if (signal?.aborted) {
-      throw new RequestCancelledError('Request cancelled', payload.correlationId);
+      throw new RequestCancelledError('Request cancelled', request.correlationId);
     }
 
     if (this.shouldFailUnaryWith) {
@@ -46,12 +50,14 @@ export class FakeModelGateway implements ModelGatewayPort {
       return this.customUnaryResponse;
     }
 
-    return {
+    const data: InferenceResultData = {
       completionId: 'compl_test_12345',
-      model: payload.canonicalModelId,
+      model: request.canonicalModelId,
+      version: request.version,
+      effort: request.effort,
       message: {
         role: 'assistant',
-        content: payload.effort
+        content: request.effort
           ? [
               { type: 'thinking', thinking: 'Analyzing the request...' },
               { type: 'text', text: 'Hello! I completed your request.' },
@@ -63,20 +69,36 @@ export class FakeModelGateway implements ModelGatewayPort {
         promptTokens: 25,
         completionTokens: 10,
         totalTokens: 35,
-        reasoningTokens: payload.effort ? 5 : undefined,
+        reasoningTokens: request.effort ? 5 : undefined,
       },
-      latencyMs: 120,
+      metadata: {
+        requestId: request.requestId,
+        correlationId: request.correlationId,
+        provider: 'anthropic',
+        targetExecuted: 'anthropic:us-east-1:prod',
+        latencyMs: 120,
+      },
+    };
+
+    return {
+      success: true,
+      data,
+      meta: {
+        requestId: request.requestId,
+        correlationId: request.correlationId,
+        timestamp: new Date().toISOString(),
+      },
     };
   }
 
-  public async *dispatchStream(
-    payload: GatewayDispatchPayload,
+  public async *executeStream(
+    request: InferenceExecutionRequest,
     signal?: AbortSignal,
   ): AsyncIterable<StreamEvent> {
-    this.recordedDispatches.push(payload);
+    this.recordedRequests.push(request);
 
     if (signal?.aborted) {
-      throw new RequestCancelledError('Request cancelled', payload.correlationId);
+      throw new RequestCancelledError('Request cancelled', request.correlationId);
     }
 
     if (this.shouldFailStreamWith) {
@@ -86,7 +108,7 @@ export class FakeModelGateway implements ModelGatewayPort {
     if (this.customStreamEvents) {
       for (const event of this.customStreamEvents) {
         if (signal?.aborted) {
-          throw new RequestCancelledError('Request cancelled', payload.correlationId);
+          throw new RequestCancelledError('Request cancelled', request.correlationId);
         }
         if (this.delayMs > 0) {
           await new Promise((resolve) => setTimeout(resolve, this.delayMs));
@@ -97,7 +119,7 @@ export class FakeModelGateway implements ModelGatewayPort {
     }
 
     // Default stream events
-    if (payload.effort) {
+    if (request.effort) {
       yield {
         event: 'thinking',
         data: { delta: 'Deep thought step 1.' },

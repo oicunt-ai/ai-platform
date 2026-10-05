@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AiOrchestratorService } from '../../src/service.js';
 import { loadAiOrchestratorConfig } from '../../src/config.js';
 import { FakeModelRegistry } from '../test-doubles/fake-model-registry.js';
-import { FakeModelGateway } from '../test-doubles/fake-model-gateway.js';
+import { FakeInference } from '../test-doubles/fake-inference.js';
 
 interface TestChatResponse {
   readonly success: boolean;
@@ -23,12 +23,12 @@ interface TestChatResponse {
 describe('HTTP Interfaces - Chat API', () => {
   let service: AiOrchestratorService;
   let fakeRegistry: FakeModelRegistry;
-  let fakeGateway: FakeModelGateway;
+  let fakeInference: FakeInference;
   let baseUrl: string;
 
   beforeEach(async () => {
     fakeRegistry = new FakeModelRegistry();
-    fakeGateway = new FakeModelGateway();
+    fakeInference = new FakeInference();
 
     const config = loadAiOrchestratorConfig({
       port: 0,
@@ -42,7 +42,7 @@ describe('HTTP Interfaces - Chat API', () => {
     service = new AiOrchestratorService({
       config,
       modelRegistry: fakeRegistry,
-      modelGateway: fakeGateway,
+      inference: fakeInference,
     });
 
     const port = await service.start();

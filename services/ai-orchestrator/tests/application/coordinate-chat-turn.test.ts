@@ -4,7 +4,7 @@ import type { TurnExecutionContext } from '../../src/domain/types.js';
 import { CoordinateChatTurnUseCase } from '../../src/application/use-cases/coordinate-chat-turn.use-case.js';
 import { InMemoryResolutionCache } from '../../src/infrastructure/cache/in-memory-resolution-cache.js';
 import { FakeModelRegistry } from '../test-doubles/fake-model-registry.js';
-import { FakeModelGateway } from '../test-doubles/fake-model-gateway.js';
+import { FakeInference } from '../test-doubles/fake-inference.js';
 import {
   AllTargetsExhaustedError,
   ContextWindowExceededError,
@@ -18,7 +18,7 @@ import {
 
 describe('Application - CoordinateChatTurnUseCase', () => {
   let fakeRegistry: FakeModelRegistry;
-  let fakeGateway: FakeModelGateway;
+  let fakeInference: FakeInference;
   let cache: InMemoryResolutionCache;
   let useCase: CoordinateChatTurnUseCase;
 
@@ -35,19 +35,19 @@ describe('Application - CoordinateChatTurnUseCase', () => {
 
   beforeEach(() => {
     fakeRegistry = new FakeModelRegistry();
-    fakeGateway = new FakeModelGateway();
+    fakeInference = new FakeInference();
     cache = new InMemoryResolutionCache(60);
     useCase = new CoordinateChatTurnUseCase({
       modelRegistry: fakeRegistry,
-      modelGateway: fakeGateway,
+      inference: fakeInference,
       resolutionCache: cache,
       defaultTimeoutMs: 120_000,
       maxTimeoutMs: 300_000,
     });
   });
 
-  describe('Model Identity Preservation', () => {
-    it('strictly preserves the user selected canonical model identity', async () => {
+  describe('Model Identity & Request Mapping to Inference', () => {
+    it('strictly preserves the user selected canonical model identity and maps to InferenceExecutionRequest', async () => {
       const result = await useCase.executeUnary(
         {
           model: 'claude-sonnet',
@@ -58,8 +58,22 @@ describe('Application - CoordinateChatTurnUseCase', () => {
 
       expect(result.success).toBe(true);
       expect(result.data.model).toBe('claude-sonnet');
-      expect(fakeGateway.recordedDispatches).toHaveLength(1);
-      expect(fakeGateway.recordedDispatches[0]?.canonicalModelId).toBe('claude-sonnet');
+      expect(fakeInference.recordedRequests).toHaveLength(1);
+
+      const request = fakeInference.recordedRequests[0];
+      expect(request?.canonicalModelId).toBe('claude-sonnet');
+      expect(request?.version).toBe('v1.0.0');
+      expect(request?.stream).toBe(false);
+      expect(request?.limits).toBeDefined();
+      expect(request?.pricing).toBeDefined();
+      expect(request?.eligibleTargets).toBeDefined();
+      expect(request?.routingPolicy).toBeDefined();
+      expect(request?.tenantId).toBe('ten_enterprise');
+      expect(request?.userId).toBe('usr_alpha');
+      expect(request?.actorId).toBe('test-actor');
+      expect(request?.correlationId).toBe('corr_33333');
+      expect(request?.requestId).toBe('req_22222');
+      expect(request?.deadlineMs).toBeGreaterThan(Date.now());
     });
 
     it('throws ModelNotFoundError if canonical model does not exist in registry', async () => {
@@ -73,7 +87,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
         ),
       ).rejects.toThrow(ModelNotFoundError);
 
-      expect(fakeGateway.recordedDispatches).toHaveLength(0);
+      expect(fakeInference.recordedRequests).toHaveLength(0);
     });
   });
 
@@ -88,7 +102,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
         mockContext,
       );
 
-      expect(fakeGateway.recordedDispatches[0]?.effort).toBe('high');
+      expect(fakeInference.recordedRequests[0]?.effort).toBe('high');
     });
 
     it('applies defaultEffortLevel from registry when effort is omitted for reasoning model', async () => {
@@ -101,7 +115,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
       );
 
       // Default in FakeModelRegistry is 'medium'
-      expect(fakeGateway.recordedDispatches[0]?.effort).toBe('medium');
+      expect(fakeInference.recordedRequests[0]?.effort).toBe('medium');
     });
 
     it('rejects requested effort if model does not support reasoning', async () => {
@@ -116,7 +130,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
         ),
       ).rejects.toThrow(UnsupportedEffortLevelError);
 
-      expect(fakeGateway.recordedDispatches).toHaveLength(0);
+      expect(fakeInference.recordedRequests).toHaveLength(0);
     });
 
     it('rejects unsupported effort level on a reasoning model', async () => {
@@ -131,7 +145,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
         ),
       ).rejects.toThrow(UnsupportedEffortLevelError);
 
-      expect(fakeGateway.recordedDispatches).toHaveLength(0);
+      expect(fakeInference.recordedRequests).toHaveLength(0);
     });
   });
 
@@ -146,7 +160,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
         mockContext,
       );
 
-      const dispatchedMessages = fakeGateway.recordedDispatches[0]?.messages;
+      const dispatchedMessages = fakeInference.recordedRequests[0]?.messages;
       expect(dispatchedMessages).toHaveLength(2);
       expect(dispatchedMessages?.[0]).toEqual({
         role: 'system',
@@ -168,7 +182,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
         mockContext,
       );
 
-      const dispatchedMessages = fakeGateway.recordedDispatches[0]?.messages;
+      const dispatchedMessages = fakeInference.recordedRequests[0]?.messages;
       expect(dispatchedMessages).toHaveLength(2);
       expect(dispatchedMessages?.[0]).toEqual({
         role: 'system',
@@ -178,7 +192,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
   });
 
   describe('Context Window Preflight Check', () => {
-    it('rejects requests that exceed contextWindowTokens without invoking gateway', async () => {
+    it('rejects requests that exceed contextWindowTokens without invoking inference', async () => {
       // Create message that clearly exceeds limits
       const hugePrompt = 'x'.repeat(600_000); // 600k chars -> ~150k tokens, limit is 128k for gpt-4o
       await expect(
@@ -191,7 +205,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
         ),
       ).rejects.toThrow(ContextWindowExceededError);
 
-      expect(fakeGateway.recordedDispatches).toHaveLength(0);
+      expect(fakeInference.recordedRequests).toHaveLength(0);
     });
   });
 
@@ -207,7 +221,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
         ),
       ).rejects.toThrow(ModelInMaintenanceError);
 
-      expect(fakeGateway.recordedDispatches).toHaveLength(0);
+      expect(fakeInference.recordedRequests).toHaveLength(0);
     });
 
     it('rejects deprecated model with ModelDeprecatedError (410)', async () => {
@@ -221,7 +235,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
         ),
       ).rejects.toThrow(ModelDeprecatedError);
 
-      expect(fakeGateway.recordedDispatches).toHaveLength(0);
+      expect(fakeInference.recordedRequests).toHaveLength(0);
     });
 
     it('rejects model with no eligible targets with AllTargetsExhaustedError (503)', async () => {
@@ -235,7 +249,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
         ),
       ).rejects.toThrow(AllTargetsExhaustedError);
 
-      expect(fakeGateway.recordedDispatches).toHaveLength(0);
+      expect(fakeInference.recordedRequests).toHaveLength(0);
     });
   });
 
@@ -348,7 +362,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
   describe('Cancellation Propagation', () => {
     it('aborts execution when parentSignal is cancelled', async () => {
       const abortController = new AbortController();
-      fakeGateway.delayMs = 100;
+      fakeInference.delayMs = 100;
 
       const promise = useCase.executeUnary(
         {
@@ -366,7 +380,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
   });
 
   describe('Streaming Delivery & Reasoning Privacy', () => {
-    it('streams events to caller in real time', async () => {
+    it('streams events from Inference to caller in real time', async () => {
       const stream = useCase.executeStream(
         {
           model: 'claude-sonnet',
@@ -385,6 +399,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
       expect(events.length).toBeGreaterThanOrEqual(3);
       expect(events.some((e) => e.event === 'token')).toBe(true);
       expect(events.some((e) => e.event === 'finish')).toBe(true);
+      expect(fakeInference.recordedRequests[0]?.stream).toBe(true);
     });
 
     it('filters thinking events when exposeReasoning is false', async () => {
@@ -409,10 +424,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
     });
 
     it('emits terminal error event if stream drops mid-stream (zero mid-stream retry invariant)', async () => {
-      fakeGateway.customStreamEvents = [
-        { event: 'token', data: { delta: 'Partial chunk' } },
-        // Will throw during async iteration
-      ];
+      fakeInference.customStreamEvents = [{ event: 'token', data: { delta: 'Partial chunk' } }];
 
       // Simulate a failure after first event
       async function* faultyStream() {
@@ -420,7 +432,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
         throw new Error('Connection dropped by upstream provider');
       }
 
-      fakeGateway.dispatchStream = () => faultyStream();
+      fakeInference.executeStream = () => faultyStream();
 
       const stream = useCase.executeStream(
         {

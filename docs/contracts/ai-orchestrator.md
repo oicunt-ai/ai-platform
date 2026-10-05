@@ -29,18 +29,19 @@ It provides high-level AI interaction orchestration: prompt composition, multi-t
 │   • Lifecycle Cancellation & Deadlines   • Telemetry & Cost Accounting │
 └───────────────────┬────────────────────────────────┬───────────────────┘
                     │                                │
-                    │ 2. GET /models/resolve         │ 4. POST /models/dispatch
-                    │    (model, effort)             │    (Normalized Request +
-                    ▼                                │     Resolution Metadata)
-┌──────────────────────────────────────┐             │
-│            Model Registry            │             │
-│           (Control Plane)            │             │
-│  • Canonical Model Catalog           │             │
-│  • Capabilities & Limit Validation   │             │
-│  • Eligible Provider Targets         │             │
-│  • Routing Policy Configuration      │             │
-└──────────────────────────────────────┘             │
-                                                     ▼
+                    │ 2. GET /models/resolve         │ 3. POST /inference/execute
+                    │    (model, effort)             │    (InferenceExecutionRequest)
+                    ▼                                ▼
+┌──────────────────────────────────────┐  ┌──────────────────────────────┐
+│            Model Registry            │  │      Inference Service       │
+│           (Control Plane)            │  │     (Runtime Execution)      │
+│  • Canonical Model Catalog           │  │  • Normalized Ingress        │
+│  • Capabilities & Limit Validation   │  │  • Lifecycle Hooks & TTFT    │
+│  • Eligible Provider Targets         │  │  • Privacy Redaction         │
+│  • Routing Policy Configuration      │  │  • Deadline & Cancellation   │
+└──────────────────────────────────────┘  └──────────────┬───────────────┘
+                                                         │ 4. POST /models/dispatch
+                                                         ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │                       Model Gateway (Data Plane)                       │
 │                                                                        │
@@ -60,15 +61,16 @@ It provides high-level AI interaction orchestration: prompt composition, multi-t
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-### 1.1 The Tripartite Architecture Boundary: Orchestrator vs. Registry vs. Gateway
+### 1.1 The Architectural Boundary Matrix: Orchestrator vs. Registry vs. Inference vs. Gateway
 
-The platform enforces a strict tripartite boundary across the three core AI subsystems:
+The platform enforces a strict separation of concerns across the core AI subsystems:
 
-| Subsystem           | Architectural Role                               | Core Question Owned                                                                              | Data Owned                                                                                                   |
-| :------------------ | :----------------------------------------------- | :----------------------------------------------------------------------------------------------- | :----------------------------------------------------------------------------------------------------------- |
-| **AI Orchestrator** | **Application-Level Interaction Coordinator**    | **WHAT interaction should happen?**<br/>How is the prompt structured, streamed, and coordinated? | Multi-turn conversational context, turn state, client cancellation signals, aggregated usage.                |
-| **Model Registry**  | **Control-Plane Catalog & Resolution Authority** | **WHAT models and targets exist?**<br/>What are their limits, capabilities, and configurations?  | Canonical model definitions, semantic versions, eligible provider targets, pricing tables, routing policies. |
-| **Model Gateway**   | **Data-Plane Egress & Execution Engine**         | **HOW is the selected model executed?**<br/>Which healthy provider target executes the request?  | Provider credentials, network sockets, retry budgets, circuit breakers, vendor error normalization.          |
+| Subsystem             | Architectural Role                               | Core Question Owned                                                                                                       | Data Owned                                                                                                   |
+| :-------------------- | :----------------------------------------------- | :------------------------------------------------------------------------------------------------------------------------ | :----------------------------------------------------------------------------------------------------------- |
+| **AI Orchestrator**   | **Application-Level Interaction Coordinator**    | **WHAT interaction should happen?**<br/>How is the prompt structured, streamed, and coordinated?                          | Multi-turn conversational context, turn state, client cancellation signals, aggregated usage.                |
+| **Model Registry**    | **Control-Plane Catalog & Resolution Authority** | **WHAT models and targets exist?**<br/>What are their limits, capabilities, and configurations?                           | Canonical model definitions, semantic versions, eligible provider targets, pricing tables, routing policies. |
+| **Inference Service** | **Inference-Runtime Execution Coordinator**      | **WHEN & HOW is inference coordinated at runtime?**<br/>How is the execution lifecycle governed, measured, and sanitized? | Inference execution lifecycle, TTFT tracking, privacy redaction, deadline & cancellation propagation.        |
+| **Model Gateway**     | **Data-Plane Egress & Execution Engine**         | **HOW is the selected model executed against providers?**<br/>Which healthy provider target executes the request?         | Provider credentials, network sockets, retry budgets, circuit breakers, vendor error normalization.          |
 
 ```mermaid
 sequenceDiagram
@@ -78,6 +80,7 @@ sequenceDiagram
     participant APIGW as Platform API Gateway
     participant Orch as AI Orchestrator
     participant Reg as Model Registry (Control Plane)
+    participant Inf as Inference Service (Runtime Plane)
     participant MGW as Model Gateway (Data Plane)
     participant Adapter as Provider Adapter
     participant Upstream as Upstream Model Provider
@@ -85,18 +88,22 @@ sequenceDiagram
     User->>BILLY: Enters prompt (Selects 'Claude Sonnet', Effort: 'medium')
     BILLY->>APIGW: POST /api/v1/ai/completions (model: "claude-sonnet", effort: "medium")
     APIGW->>Orch: POST /internal/v1/orchestrator/chat (Headers: X-User-ID, X-Tenant-ID, X-Correlation-ID)
-    Note over Orch: Validates messages, estimates tokens,<br/>preserves user-selected model identity
+    Note over Orch: Validates messages, estimates context window,<br/>preserves user-selected canonical model identity
     Orch->>Reg: GET /internal/v1/models/resolve/claude-sonnet?effort=medium
     Note over Reg: Validates canonical model & effort capability<br/>Resolves eligible provider targets & limits
     Reg-->>Orch: 200 OK (ModelResolutionResponse)
-    Note over Orch: Assembles GatewayDispatchPayload<br/>Calculates turn deadline & timeout
-    Orch->>MGW: POST /internal/v1/models/dispatch (GatewayDispatchPayload)
+    Note over Orch: Assembles InferenceExecutionRequest<br/>Calculates turn deadline & timeout
+    Orch->>Inf: POST /internal/v1/inference/execute (InferenceExecutionRequest)
+    Note over Inf: Evaluates lifecycle hooks, enforces deadlines,<br/>propagates cancellation signals
+    Inf->>MGW: POST /internal/v1/models/dispatch (GatewayDispatchPayload)
     Note over MGW: Evaluates circuit breakers, attempts primary target,<br/>retries or falls back across eligible targets
     MGW->>Adapter: execute(ProviderExecutionRequest)
     Adapter->>Upstream: Vendor Wire Request / Stream
     Upstream-->>Adapter: Vendor Response Chunks / SSE
     Adapter-->>MGW: NormalizedCompletionData / StreamEvent SSE
-    MGW-->>Orch: NormalizedCompletionData / StreamEvent SSE
+    MGW-->>Inf: NormalizedCompletionData / StreamEvent SSE
+    Note over Inf: Measures TTFT, latency, token throughput;<br/>applies reasoning privacy filtering
+    Inf-->>Orch: InferenceExecutionResponse / StreamEvent SSE
     Note over Orch: Aggregates turn tokens, latency, cost;<br/>forwards normalized events to caller
     Orch-->>APIGW: Normalized Stream / Response
     APIGW-->>BILLY: Normalized Stream / Response
@@ -115,43 +122,47 @@ The AI Orchestrator authoritatively owns:
 2. **Model Identity & Effort Preservation**: Retaining the user's selected canonical model identity (`claude-sonnet`, `claude-opus`, `gpt-4o`, `gemini-pro`, etc.) and validated reasoning effort (`low`, `medium`, `high`) throughout the entire execution pipeline without arbitrary model replacement.
 3. **Model Registry Resolution**: Querying the Model Registry control plane (`GET /internal/v1/models/resolve/:id`) to retrieve approved target bindings, token bounds, and routing policies before execution.
 4. **Resolution Caching**: Maintaining a local, short-lived, in-memory L1 resolution cache (TTL: 30–60 seconds) to minimize control-plane latency on rapid consecutive turns.
-5. **Preflight Context Window Estimation**: Performing bounded preflight context-window estimation against limits provided by Model Registry (`contextWindowTokens`, `maxOutputTokens`) without importing provider-specific tokenizers, rejecting blatantly oversized dispatches early while leaving actual execution authority to the Model Gateway.
-6. **Execution Budget & Deadline Management**: Establishing overall conversational turn deadlines (`deadlineMs`) and propagating them into downstream Model Gateway payloads.
-7. **Client Cancellation Propagation**: Listening for client HTTP disconnect events (`req.on('close')`) and immediately propagating `AbortSignal` downstream to cancel Model Gateway execution and release provider resources.
-8. **Real-Time Streaming Delivery**: Consuming Server-Sent Events (`StreamEvent`) from the Model Gateway and streaming normalized chunks (`token`, `thinking`, `tool_call`, `finish`, `error`) downstream to client applications.
-9. **Execution Usage Propagation & Turn Telemetry**: Carrying and propagating normalized execution token usage (`TokenUsage`) received from the Model Gateway, calculating turn-level estimated cost from Model Registry pricing tables for telemetry and span transparency, without owning durable usage storage or company-wide billing accounting.
-10. **Error Normalization**: Mapping Model Registry and Model Gateway errors to unified, secure product error payloads without leaking internal infrastructure details or provider secrets.
+5. **Preflight Context Window Estimation**: Performing bounded preflight context-window estimation against limits provided by Model Registry (`contextWindowTokens`, `maxOutputTokens`) without importing provider-specific tokenizers, rejecting blatantly oversized dispatches early while leaving runtime execution to Inference and actual execution authority to the Model Gateway.
+6. **Execution Budget & Deadline Management**: Establishing overall conversational turn deadlines (`deadlineMs`) and propagating them into downstream `InferenceExecutionRequest.deadlineMs`.
+7. **Client Cancellation Propagation**: Listening for client HTTP disconnect events (`req.on('close')`) and immediately propagating `AbortSignal` downstream to cancel Inference Service execution (which in turn terminates Model Gateway provider execution).
+8. **Inference Execution Dispatch**: Dispatching validated execution payloads exclusively to the **Inference Service** (`POST /internal/v1/inference/execute`) as its sole downstream runtime boundary. The Orchestrator does **not** call Model Gateway directly.
+9. **Real-Time Streaming Delivery**: Consuming Server-Sent Events (`StreamEvent`) from the Inference Service and streaming normalized chunks (`token`, `thinking`, `tool_call`, `finish`, `error`) downstream to client applications.
+10. **Execution Usage Propagation & Turn Telemetry**: Carrying and propagating normalized execution token usage (`TokenUsage`) received from the downstream pipeline, calculating turn-level estimated cost from Model Registry pricing tables for telemetry and span transparency, without owning durable usage storage or company-wide billing accounting.
+11. **Error Normalization**: Mapping Model Registry and Inference Service errors to unified, secure product error payloads without leaking internal infrastructure details or provider secrets.
 
 ### 2.2 Explicit Non-Responsibilities
 
 The AI Orchestrator strictly **does NOT** own:
 
 1. **NO Direct Provider Calls**: The Orchestrator **never** initiates network connections to third-party model providers (Anthropic, OpenAI, Google, AWS Bedrock).
-2. **NO Provider Credentials**: The Orchestrator **never** loads, stores, or manages provider API keys, tokens, or IAM credentials.
-3. **NO Provider SDKs or Tokenizers**: The Orchestrator **never** imports `@anthropic-ai/sdk`, `openai`, `@google/genai`, `@aws-sdk/client-bedrock-runtime`, or vendor-specific tokenizer libraries (`tiktoken`, etc.). Context window estimation is approximate unless an OICUNT-owned tokenizer is available, and must not leak vendor implementation details.
-4. **NO Model Catalog Authority**: The Orchestrator **never** defines, persists, or mutates canonical model definitions, semantic versions, pricing tables, or capability flags (owned solely by Model Registry).
-5. **NO Provider Target Routing or Circuit Breaking**: The Orchestrator **never** tracks provider target health, calculates circuit breaker error rates, executes target retries, or determines vendor failover (owned solely by Model Gateway).
-6. **NO Persistent Conversation Database**: The Orchestrator does **not** introduce a shared mega database to store long-term chat threads or message histories. Persistent conversation state belongs to product services or the dedicated future `services/memory`.
-7. **NO Durable Usage Aggregation or Billing Accounting**: The Orchestrator does **NOT** own durable company-wide usage aggregation or billing accounting. The Model Gateway supplies normalized execution usage, and the Orchestrator propagates it on the active turn. Authoritative, durable usage aggregation across tenants and billing-related usage accounting are owned exclusively by the future **Platform Usage** service in the company platform repository (`platform`). (Note: The Platform Usage service is not implemented now).
-8. **NO Company Platform Concerns**: The Orchestrator **never** implements user password authentication, subscription verification, payment processing, or public ingress routing (owned by Company Platform).
-9. **NO Embedded Tool Sandboxes or MCP Hosts**: The Orchestrator coordinates tool definitions in messages, but does **not** execute arbitrary code sandboxes or maintain direct MCP transport connections (delegated to future `services/tools` and `services/mcp`).
+2. **NO Direct Model Gateway Calls**: The Orchestrator does **NOT** call the Model Gateway directly. The Model Gateway sits strictly behind the Inference Service in the execution pipeline (`Orchestrator → Inference → Model Gateway`).
+3. **NO Provider Credentials**: The Orchestrator **never** loads, stores, or manages provider API keys, tokens, or IAM credentials.
+4. **NO Provider SDKs or Tokenizers**: The Orchestrator **never** imports `@anthropic-ai/sdk`, `openai`, `@google/genai`, `@aws-sdk/client-bedrock-runtime`, or vendor-specific tokenizer libraries (`tiktoken`, etc.). Context window estimation is approximate unless an OICUNT-owned tokenizer is available, and must not leak vendor implementation details.
+5. **NO Model Catalog Authority**: The Orchestrator **never** defines, persists, or mutates canonical model definitions, semantic versions, pricing tables, or capability flags (owned solely by Model Registry).
+6. **NO Provider Target Routing or Circuit Breaking**: The Orchestrator **never** tracks provider target health, calculates circuit breaker error rates, executes target retries, or determines vendor failover (owned solely by Model Gateway behind Inference).
+7. **NO Runtime Hooks or TTFT Tracking**: The Orchestrator does not execute inference runtime hooks or measure raw time-to-first-token (TTFT) metrics (owned by Inference Service).
+8. **NO Persistent Conversation Database**: The Orchestrator does **not** introduce a shared mega database to store long-term chat threads or message histories. Persistent conversation state belongs to product services or the dedicated future `services/memory`.
+9. **NO Durable Usage Aggregation or Billing Accounting**: The Orchestrator does **NOT** own durable company-wide usage aggregation or billing accounting. The Model Gateway supplies normalized execution usage, and the Orchestrator propagates it on the active turn. Authoritative, durable usage aggregation across tenants and billing-related usage accounting are owned exclusively by the future **Platform Usage** service in the company platform repository (`platform`). (Note: The Platform Usage service is not implemented now).
+10. **NO Company Platform Concerns**: The Orchestrator **never** implements user password authentication, subscription verification, payment processing, or public ingress routing (owned by Company Platform).
+11. **NO Embedded Tool Sandboxes or MCP Hosts**: The Orchestrator coordinates tool definitions in messages, but does **not** execute arbitrary code sandboxes or maintain direct MCP transport connections (delegated to future `services/tools` and `services/mcp`).
 
 ### 2.3 Architectural Responsibility Matrix
 
-| Concern / Capability           | BILLY (Product) |       AI Orchestrator       | Model Registry  |        Model Gateway        | Provider Adapter | Upstream Provider |
-| :----------------------------- | :-------------: | :-------------------------: | :-------------: | :-------------------------: | :--------------: | :---------------: |
-| **Model Picker UI**            |    **Owns**     |          Consumes           | Exposes Catalog |          Ignorant           |     Ignorant     |     Ignorant      |
-| **Model Identity Authority**   |     Selects     |          Preserves          |    **Owns**     |          Consumes           |     Ignorant     |     Ignorant      |
-| **Reasoning Effort Selection** |     Selects     |          Preserves          |    Validates    |          Consumes           |    Translates    |     Executes      |
-| **Prompt Assembly**            |    Prepares     |       **Coordinates**       |    Ignorant     |         Dispatches          |     Ignorant     |     Ignorant      |
-| **Context Window Validation**  |    Optional     | Preflight Estimate (Approx) | Defines Limits  | **Authoritative Execution** |     Ignorant     |     Enforces      |
-| **Target Resolution**          |    Ignorant     |           Invokes           |    **Owns**     |          Consumes           |     Ignorant     |     Ignorant      |
-| **Execution Dispatch**         |    Ignorant     |           Invokes           |    Ignorant     |          **Owns**           |     Executes     |     Ignorant      |
-| **Provider Credentials**       |    Forbidden    |          Forbidden          |    Forbidden    |           Manages           |   **Injects**    |     Verifies      |
-| **Circuit Breakers & Retries** |    Ignorant     |          Ignorant           |    Ignorant     |          **Owns**           |     Executes     |     Ignorant      |
-| **Stream Chunk Translation**   |     Renders     |           Relays            |    Ignorant     |         Normalizes          |  **Translates**  |     Generates     |
-| **Execution Token Usage**      |     Renders     |   **Propagates Metadata**   | Pricing Tables  | **Normalizes from Adapter** |      Counts      |     Measures      |
-| **Durable Usage & Billing**    | Consumes Quotas |          Ignorant           |    Ignorant     |          Ignorant           |     Ignorant     |     Ignorant      |
+| Concern / Capability           | BILLY (Product) |       AI Orchestrator       | Model Registry  |    Inference Service     |        Model Gateway        | Provider Adapter | Upstream Provider |
+| :----------------------------- | :-------------: | :-------------------------: | :-------------: | :----------------------: | :-------------------------: | :--------------: | :---------------: |
+| **Model Picker UI**            |    **Owns**     |          Consumes           | Exposes Catalog |         Ignorant         |          Ignorant           |     Ignorant     |     Ignorant      |
+| **Model Identity Authority**   |     Selects     |          Preserves          |    **Owns**     |        Preserves         |          Consumes           |     Ignorant     |     Ignorant      |
+| **Reasoning Effort Selection** |     Selects     |          Preserves          |    Validates    |        Preserves         |          Consumes           |    Translates    |     Executes      |
+| **Prompt Assembly**            |    Prepares     |       **Coordinates**       |    Ignorant     |         Ignorant         |         Dispatches          |     Ignorant     |     Ignorant      |
+| **Context Window Validation**  |    Optional     | Preflight Estimate (Approx) | Defines Limits  | Runtime Parameter Bounds | **Authoritative Execution** |     Ignorant     |     Enforces      |
+| **Target Resolution**          |    Ignorant     |           Invokes           |    **Owns**     |       Pass-Through       |          Consumes           |     Ignorant     |     Ignorant      |
+| **Inference Execution**        |    Ignorant     |      Coordinates Turn       |    Ignorant     | **Coordinates Runtime**  |  **Owns Provider Egress**   |     Executes     |     Ignorant      |
+| **Runtime Hooks & TTFT**       |    Ignorant     |          Ignorant           |    Ignorant     |         **Owns**         |          Ignorant           |     Ignorant     |     Ignorant      |
+| **Provider Credentials**       |    Forbidden    |          Forbidden          |    Forbidden    |        Forbidden         |           Manages           |   **Injects**    |     Verifies      |
+| **Circuit Breakers & Retries** |    Ignorant     |          Ignorant           |    Ignorant     |  Zero Mid-Stream Retry   |          **Owns**           |     Executes     |     Ignorant      |
+| **Stream Chunk Translation**   |     Renders     |           Relays            |    Ignorant     | Filters Privacy & Relays |         Normalizes          |  **Translates**  |     Generates     |
+| **Execution Token Usage**      |     Renders     |   **Propagates Metadata**   | Pricing Tables  |    Conveys Telemetry     | **Normalizes from Adapter** |      Counts      |     Measures      |
+| **Durable Usage & Billing**    | Consumes Quotas |          Ignorant           |    Ignorant     |         Ignorant         |          Ignorant           |     Ignorant     |     Ignorant      |
 
 _(Note: Authoritative durable usage aggregation and billing accounting are owned exclusively by the future Platform Usage service in `platform`)_
 
@@ -364,7 +375,7 @@ data: {"finishReason":"stop","usage":{"promptTokens":18,"completionTokens":7,"to
 
 1. **Prompt & Behavior Discrepancies**: Different model families interpret system instructions, formatting guidelines, XML tags, and reasoning tokens differently. A prompt optimized for Claude Sonnet may degrade or fail on GPT-4o.
 2. **Deterministic User Expectations**: Users and product workflows explicitly select models based on coding style, tone, context window size, or reasoning characteristics.
-3. **Transparent Target Failover within the Gateway**: Target redundancy is solved at the **provider target level** inside the Model Gateway (e.g. Anthropic direct &rarr; AWS Bedrock fallback for `claude-sonnet`), maintaining 100% model fidelity without cross-vendor substitution.
+3. **Transparent Target Failover within the Gateway**: Target redundancy is solved at the **provider target level** inside the Model Gateway behind the Inference Service (e.g. Anthropic direct &rarr; AWS Bedrock fallback for `claude-sonnet`), maintaining 100% model fidelity without cross-vendor substitution.
 
 ### 4.2 Dynamic Catalog Discovery Integration
 
@@ -410,12 +421,12 @@ flowchart TD
     ValidateEffort -- Valid --> PassEffort["Resolution Success<br/>(effort: validated)"]
     ValidateEffort -- Omitted --> ApplyDefault["Apply defaultEffortLevel<br/>from Model Registry"]
     ValidateEffort -- Invalid Level --> ErrInvalid["Reject: 400 UNSUPPORTED_EFFORT_LEVEL"]
-    PassEffort --> Dispatch[Forward to Model Gateway in GatewayDispatchPayload]
+    PassEffort --> Dispatch[Forward to Inference Service in InferenceExecutionRequest]
     ApplyDefault --> Dispatch
     PassNoEffort --> Dispatch
 ```
 
-The validated effort is forwarded in `GatewayDispatchPayload.effort`. The Model Gateway provider adapter translates this normalized effort into vendor-specific structures (e.g. Anthropic `budget_tokens`, OpenAI `reasoning_effort`).
+The validated effort is forwarded in `InferenceExecutionRequest.effort`. The downstream pipeline forwards this to Model Gateway whose provider adapter translates this normalized effort into vendor-specific structures (e.g. Anthropic `budget_tokens`, OpenAI `reasoning_effort`).
 
 ---
 
@@ -456,15 +467,15 @@ If the Model Registry is unreachable or returns an error:
 
 ---
 
-## 7. Model Gateway Interaction (Data Plane)
+## 7. Inference Service Interaction (Runtime Execution Plane)
 
-The Model Gateway is the singular execution engine invoked by the Orchestrator.
+The **Inference Service** (`services/inference`) is the authoritative inference-runtime coordination layer and the sole downstream execution boundary invoked by the AI Orchestrator. The Model Gateway sits strictly behind the Inference Service (`Orchestrator → Inference → Model Gateway`) and is never called directly by the Orchestrator.
 
-### 7.1 Dispatch Invocation
+### 7.1 Execution Invocation
 
 ```http
-POST /internal/v1/models/dispatch HTTP/1.1
-Host: model-gateway.service.internal:8082
+POST /internal/v1/inference/execute HTTP/1.1
+Host: inference.service.internal:8084
 Content-Type: application/json; charset=utf-8
 Accept: application/json, text/event-stream
 X-Service-Name: ai-orchestrator
@@ -475,12 +486,12 @@ X-Request-ID: req_4a1b2c3d-e4f5-6789-abcd-ef0123456789
 Authorization: Bearer <internal-service-token>
 ```
 
-### 7.2 Payload Construction (`GatewayDispatchPayload`)
+### 7.2 Payload Construction (`InferenceExecutionRequest`)
 
-The Orchestrator packages the resolved metadata and conversational context into the `GatewayDispatchPayload` required by the Model Gateway:
+The Orchestrator packages the resolved metadata, conversational context, and execution constraints into the standard `InferenceExecutionRequest` consumed by the Inference Service:
 
 ```typescript
-const dispatchPayload: GatewayDispatchPayload = {
+const inferenceRequest: InferenceExecutionRequest = {
   requestId: context.requestId,
   correlationId: context.correlationId,
   conversationId: request.conversationId,
@@ -495,6 +506,11 @@ const dispatchPayload: GatewayDispatchPayload = {
   pricing: resolution.pricing,
   eligibleTargets: resolution.eligibleTargets,
   routingPolicy: resolution.routingPolicy,
+  privacyPolicy: {
+    exposeReasoning: request.privacyPolicy?.exposeReasoning ?? true,
+    redactThinking: request.privacyPolicy?.redactThinking ?? false,
+    redactThinkingInLogs: true,
+  },
   tenantId: context.tenantId,
   userId: context.userId,
   actorId: context.actorId,
@@ -503,17 +519,30 @@ const dispatchPayload: GatewayDispatchPayload = {
 };
 ```
 
+### 7.3 Unary Response Processing (`InferenceExecutionResponse`)
+
+When `stream: false`, the Inference Service returns a standard response envelope containing normalized `InferenceResultData`:
+
+```typescript
+const response: InferenceExecutionResponse = await inferenceClient.executeUnary(
+  inferenceRequest,
+  abortController.signal,
+);
+
+const resultData = response.data;
+```
+
 ---
 
 ## 8. Streaming Architecture & Protocols
 
 ### 8.1 Server-Sent Events Protocol
 
-Streaming requests establish a chunked HTTP/1.1 connection with `Content-Type: text/event-stream`. The Orchestrator consumes events from the Model Gateway and pipelines them to the client.
+Streaming requests establish a chunked HTTP/1.1 connection with `Content-Type: text/event-stream`. The Orchestrator consumes events from the Inference Service and pipelines them to the client.
 
 ```
-Model Gateway SSE Stream ──► Orchestrator Pipeline ──► Product (BILLY) SSE Stream
-       (StreamEvent)              (Inspect & Audit)               (StreamEvent)
+Model Gateway SSE Stream ──► Inference Service Stream ──► Orchestrator Pipeline ──► Product (BILLY) SSE Stream
+       (StreamEvent)             (TTFT, Privacy Filter)         (Inspect & Audit)               (StreamEvent)
 ```
 
 ### 8.2 Stream Event Sequence & Payloads
@@ -539,7 +568,7 @@ Model Gateway SSE Stream ──► Orchestrator Pipeline ──► Product (BILL
 
 > [!IMPORTANT]
 > **Once the first event (`token`, `thinking`, `tool_call`) is emitted to the client, NO RETRY OR TARGET FAILOVER IS PERMITTED.**  
-> If an upstream target drops mid-stream, the Model Gateway terminates the stream with an `error` event. The Orchestrator forwards the error event and terminates the HTTP connection. Retrying after partial token emission would cause duplicated, corrupt, or hallucinatory user responses.
+> If an upstream target drops mid-stream, the Model Gateway terminates the stream with an `error` event. The Inference Service enforces the Zero Mid-Stream Retry Invariant and relays the error event. The Orchestrator forwards the error event and terminates the HTTP connection. Retrying after partial token emission would cause duplicated, corrupt, or hallucinatory user responses.
 
 ---
 
@@ -552,23 +581,26 @@ sequenceDiagram
     actor User
     participant BILLY as BILLY Client
     participant Orch as AI Orchestrator
+    participant Inf as Inference Service
     participant MGW as Model Gateway
     participant Upstream as Upstream Provider
 
     User->>BILLY: Clicks "Stop Generation" / Closes Tab
     BILLY->>Orch: Aborts HTTP Connection (TCP FIN / RST)
     Note over Orch: req.on('close') triggers internal AbortController
-    Orch->>MGW: Aborts HTTP Dispatch Request (AbortSignal)
+    Orch->>Inf: Aborts HTTP Inference Request (AbortSignal)
+    Note over Inf: Propagates AbortSignal downstream
+    Inf->>MGW: Aborts HTTP Dispatch Request (AbortSignal)
     Note over MGW: Cancels upstream fetch, aborts backoff timer
     MGW->>Upstream: Aborts Provider Socket / Stream
-    Note over Orch,MGW: Releases buffers, records finishReason: 'cancelled',<br/>marks OpenTelemetry span status: CANCELLED
+    Note over Orch,Inf,MGW: Releases buffers, records finishReason: 'cancelled',<br/>marks OpenTelemetry span status: CANCELLED
 ```
 
 ### 9.2 Implementation Invariants
 
 - The Orchestrator binds an `AbortController` to the inbound HTTP request socket (`req.on('close')`).
 - If the socket closes before `res.writableEnded` is true, the `AbortController.abort()` signal fires immediately.
-- The `AbortSignal` is passed to the downstream Model Gateway HTTP client call.
+- The `AbortSignal` is passed to the downstream Inference Service HTTP client call (`HttpInferenceClient`).
 - Cancelled turns return resources immediately, record `finishReason: 'cancelled'`, and finalize telemetry spans without logging false error alerts.
 
 ---
@@ -584,15 +616,16 @@ The platform enforces a layered timeout hierarchy:
 │  ▼                                                                     │
 │ Orchestrator Turn Execution Budget (deadlineMs = startTime + 115,000ms)│
 │  ├── Registry Resolution Budget (Max: 3,000ms)                         │
-│  └── Model Gateway Execution Budget (deadlineMs passed in payload)     │
-│       ├── Target 1 Execution (Provider Timeout: 60,000ms)               │
-│       └── Target 2 Failover (Remaining Budget before deadlineMs)       │
+│  └── Inference Runtime Budget (deadlineMs passed in InferenceExecution)│
+│       └── Model Gateway Execution Budget (deadlineMs in Dispatch)      │
+│            ├── Target 1 Execution (Provider Timeout: 60,000ms)         │
+│            └── Target 2 Failover (Remaining Budget before deadlineMs)  │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
 1. **Client Timeout**: Client may supply `timeoutMs` in `OrchestratorChatRequest`. If omitted, default is `120,000ms` (capped at max `300,000ms`).
 2. **Orchestrator Turn Deadline**: `deadlineMs = Date.now() + effectiveTimeoutMs`.
-3. **Propagation to Gateway**: `deadlineMs` is passed directly in `GatewayDispatchPayload.deadlineMs`. The Gateway calculates remaining timeout per attempt as `Math.min(remainingBudget, targetTimeoutMs)`.
+3. **Propagation to Inference Service**: `deadlineMs` is passed directly in `InferenceExecutionRequest.deadlineMs`. The Inference Service validates that the deadline is in the future, binds timeout controls, and passes the budget downstream to Model Gateway.
 4. **Deadline Expiration**: If the deadline expires at any point, execution terminates immediately with HTTP 504 `INFERENCE_TIMEOUT`.
 
 ---
@@ -627,12 +660,12 @@ If the client supplies `systemPrompt: string` in `OrchestratorChatRequest`, the 
 
 ### 11.4 Context Window Validation & Preflight Estimation
 
-Before dispatching to the Model Gateway, the Orchestrator performs a bounded, preflight context-window check to reject clearly oversized requests early and preserve platform bandwidth:
+Before dispatching to the Inference Service, the Orchestrator performs a bounded, preflight context-window check to reject clearly oversized requests early and preserve platform bandwidth:
 
 1. **Preflight Context Limit Bounds**: The Orchestrator evaluates the incoming conversation against `resolution.limits.contextWindowTokens` and `resolution.limits.maxOutputTokens` authoritatively defined and supplied by the Model Registry.
 2. **Strict Prohibition on Provider Tokenizers**: The Orchestrator must **NOT** introduce provider-specific tokenizers (such as `tiktoken`, Hugging Face tokenizers, or Anthropic/Google tokenizer SDKs) or any vendor SDK dependencies. Importing provider tokenization libraries into the Orchestrator violates the anti-corruption boundary and couples the coordinator to vendor release cycles.
 3. **Approximate Estimation Semantics**: Token estimation in the Orchestrator is explicitly approximate unless an OICUNT-owned, provider-neutral tokenizer library is made available in `@oicunt-ai/*`. The Orchestrator employs lightweight, bounded heuristics (e.g., standard character-to-token approximations such as ~4 characters per token for Latin text, plus fixed token bounds for images and structured tool definitions).
-4. **Model Gateway Execution Authority**: The **Model Gateway remains authoritative for actual provider execution**. If a prompt closely approaches the boundary and slips past the preflight heuristic, the Model Gateway and upstream provider target will enforce the hard context boundary during execution, returning normalized error `CONTEXT_WINDOW_EXCEEDED`.
+4. **Downstream Execution Authority**: The **downstream execution engine (Model Gateway behind Inference) remains authoritative for actual provider execution**. If a prompt closely approaches the boundary and slips past the preflight heuristic, the downstream pipeline and upstream provider target will enforce the hard context boundary during execution, returning normalized error `CONTEXT_WINDOW_EXCEEDED`.
 5. **No Provider Detail Leakage**: Context-window validation and estimation logic must **never** leak provider-specific implementation details, vendor encoding idiosyncrasies, or vendor-specific token budget formulas into the Orchestrator.
 6. **Existing Error Behavior Preserved**: When the preflight token estimate (`estimatedPromptTokens + requestedMaxTokens`) decisively exceeds `resolution.limits.contextWindowTokens`, the Orchestrator immediately rejects the request with HTTP 400 `CONTEXT_WINDOW_EXCEEDED` and a sanitized error payload:
 
@@ -720,7 +753,7 @@ const span = tracer.startSpan('orchestrator.chat_turn', {
 The OICUNT AI Platform enforces a strict boundary between real-time execution telemetry and durable billing accounting:
 
 1. **Model Gateway Provides Authoritative Execution Usage**: During execution, the upstream provider adapter extracts exact token metrics reported by the provider (or calculated by the adapter). The Model Gateway normalizes this into the platform-standard `TokenUsage` structure (`promptTokens`, `completionTokens`, `totalTokens`, `reasoningTokens`, `cachedTokens`) and returns it in `NormalizedCompletionData` or the terminal `finish` stream event.
-2. **Orchestrator Carries and Propagates Usage Metadata**: The AI Orchestrator receives this normalized execution usage from the Model Gateway and carries/propagates it downstream to product callers (in `OrchestratorChatData.usage` or SSE `finish` payload) and attaches it to OpenTelemetry spans (`orchestrator.chat_turn`).
+2. **Orchestrator Carries and Propagates Usage Metadata**: The AI Orchestrator receives this normalized execution usage via the Inference Service from the Model Gateway and carries/propagates it downstream to product callers (in `OrchestratorChatData.usage` or SSE `finish` payload) and attaches it to OpenTelemetry spans (`orchestrator.chat_turn`).
 3. **Orchestrator Does NOT Own Durable Usage Aggregation**: The Orchestrator does **NOT** maintain a database of historical token consumption, cumulative tenant quotas, or aggregated user metrics. It operates as an ephemeral turn coordinator.
 4. **Orchestrator Does NOT Own Billing Accounting**: The Orchestrator does **NOT** manage invoices, subscription tier limits, credit debits, customer usage tracking, or financial ledgers.
 5. **Future Platform Usage Service Owns Durable Aggregation & Billing Accounting**: Authoritative, durable company-wide usage aggregation, persistent tenant usage timeseries, and billing-related usage accounting are authoritatively owned by the future **Platform Usage** service residing in the company platform repository (`https://github.com/oicunt-ai/platform`).
@@ -728,7 +761,7 @@ The OICUNT AI Platform enforces a strict boundary between real-time execution te
 
 ### 14.2 Turn-Level Execution Token Accounting
 
-On a per-turn basis, the Orchestrator records and passes through the normalized `TokenUsage` reported by the Model Gateway:
+On a per-turn basis, the Orchestrator records and passes through the normalized `TokenUsage` reported by downstream execution:
 
 - `promptTokens`: Total input tokens processed across the prompt and context messages.
 - `completionTokens`: Output tokens generated by the assistant.
@@ -809,7 +842,10 @@ Retries are strictly segregated across platform tiers to prevent exponential ret
 │ Client (BILLY): User-driven retry (Click "Regenerate" / Network Retry) │
 ├────────────────────────────────────────────────────────────────────────┤
 │ AI Orchestrator: Retries ONLY control-plane Model Registry resolution  │
-│                  NEVER retries an exhausted Model Gateway dispatch     │
+│                  NEVER retries an exhausted Inference Service execution│
+├────────────────────────────────────────────────────────────────────────┤
+│ Inference Service: Enforces Zero Mid-Stream Retry Invariant;           │
+│                    passes through execution errors without re-dispatch │
 ├────────────────────────────────────────────────────────────────────────┤
 │ Model Gateway: Retries transient provider errors (429, 503, Socket)    │
 │                with exponential backoff and full jitter; executes      │
@@ -817,9 +853,10 @@ Retries are strictly segregated across platform tiers to prevent exponential ret
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
-1. **Model Gateway Retries**: The Model Gateway authoritatively owns all execution-level retries and target failovers. When it returns `ALL_TARGETS_EXHAUSTED` or `RATE_LIMIT_EXCEEDED`, it has already exhausted all configured attempts and retry budgets across all targets.
-2. **Orchestrator Prohibitions**: The Orchestrator MUST NOT catch an `ALL_TARGETS_EXHAUSTED` error from the Gateway and immediately dispatch to the Gateway again. Doing so violates the global retry budget and magnifies upstream thundering herds.
-3. **Orchestrator Retry Scope**: The Orchestrator retries **only** transient network failures connecting to the Model Registry during the initial resolution query (up to 2 retries, 50ms/100ms backoff).
+1. **Model Gateway Retries**: The Model Gateway (positioned behind Inference) authoritatively owns all execution-level retries and target failovers. When it returns `ALL_TARGETS_EXHAUSTED` or `RATE_LIMIT_EXCEEDED`, it has already exhausted all configured attempts and retry budgets across all targets.
+2. **Inference Service Invariant**: The Inference Service enforces the Zero Mid-Stream Retry Invariant and relays normalized completion or failure events.
+3. **Orchestrator Prohibitions**: The Orchestrator MUST NOT catch an `ALL_TARGETS_EXHAUSTED` or `RATE_LIMIT_EXCEEDED` error from the Inference Service and immediately dispatch to Inference again. Doing so violates the global retry budget and magnifies upstream thundering herds.
+4. **Orchestrator Retry Scope**: The Orchestrator retries **only** transient network failures connecting to the Model Registry during the initial resolution query (up to 2 retries, 50ms/100ms backoff).
 
 ---
 
@@ -923,10 +960,10 @@ src/
 │   └── types.ts                 # TurnConfig, ExecutionBudget
 ├── application/                 # Use cases, ports, DTOs
 │   ├── dtos/                    # OrchestratorChatRequest, OrchestratorChatResponse
-│   ├── ports/                   # ModelRegistryPort, ModelGatewayPort, ResolutionCachePort
+│   ├── ports/                   # ModelRegistryPort, InferencePort, ResolutionCachePort
 │   └── use-cases/               # CoordinateChatTurnUseCase, StreamChatTurnUseCase
 ├── infrastructure/              # Outbound adapters (HTTP clients, cache, config)
-│   ├── clients/                 # HttpModelRegistryClient, HttpModelGatewayClient
+│   ├── clients/                 # HttpModelRegistryClient, HttpInferenceClient
 │   ├── cache/                   # InMemoryResolutionCache
 │   └── config.ts                # Environment loading & validation
 ├── interfaces/                  # Inbound adapters (HTTP server, routes, controllers)
@@ -941,7 +978,7 @@ src/
 - **`application`**: Depends on `domain` and ports. Never imports `infrastructure` or `interfaces`.
 - **`infrastructure`**: Implements application ports. Depends on `application` and `domain`.
 - **`interfaces`**: Inbound HTTP controllers. Calls application use cases.
-- **FORBIDDEN**: Vendor LLM SDKs (`@anthropic-ai/sdk`, `openai`), direct database access to other services, circular dependencies.
+- **FORBIDDEN**: Vendor LLM SDKs (`@anthropic-ai/sdk`, `openai`), direct calls to Model Gateway (Inference Service is sole downstream runtime boundary), direct database access to other services, circular dependencies.
 
 ---
 
@@ -956,7 +993,7 @@ Every Orchestrator instance exposes standard Kubernetes probes:
 
 ### 21.2 Readiness Probe (`GET /health/readiness`)
 
-- Verifies network reachability to the **Model Registry** and **Model Gateway**.
+- Verifies network reachability to the **Model Registry** and **Inference Service**.
 - Returns `200 OK` when downstream services respond to health pings.
 - Returns `503 SERVICE UNAVAILABLE` during startup or downstream control-plane partition.
 
@@ -998,18 +1035,19 @@ While the initial implementation focuses on conversational chat orchestration, t
 Any future implementation of the AI Orchestrator MUST satisfy the following checklist:
 
 - [ ] Orchestrator **never** calls third-party model providers directly.
+- [ ] Orchestrator **never** calls Model Gateway directly (Inference Service is sole downstream runtime boundary).
 - [ ] Orchestrator **never** contains provider API keys or credentials.
 - [ ] Orchestrator **never** imports vendor SDKs (`@anthropic-ai/sdk`, `openai`, `@google/genai`).
 - [ ] User's selected canonical model identity (`claude-sonnet`, etc.) is **strictly preserved** without silent model replacement.
 - [ ] Reasoning effort is treated as a request parameter and validated against Model Registry capabilities.
 - [ ] Model Registry authoritatively resolves eligible targets, capabilities, and token limits.
-- [ ] Model Gateway authoritatively executes dispatches, retries, and target fallbacks.
+- [ ] Inference Service is the sole downstream execution coordinator; Model Gateway authoritatively executes dispatches, retries, and target fallbacks behind Inference.
 - [ ] Streaming requests emit normalized SSE `StreamEvent` events in real time.
 - [ ] Zero retry or target failover occurs after the first stream token is emitted.
-- [ ] Client disconnects (`req.on('close')`) immediately propagate `AbortSignal` downstream.
-- [ ] Global execution deadlines (`deadlineMs`) are calculated and passed to the Model Gateway.
-- [ ] Context limits are estimated using bounded heuristics without provider tokenizers; Model Gateway remains authoritative for execution.
-- [ ] Execution token usage is propagated from Model Gateway; durable usage aggregation and billing accounting are reserved for Platform Usage service.
+- [ ] Client disconnects (`req.on('close')`) immediately propagate `AbortSignal` downstream to Inference Service.
+- [ ] Global execution deadlines (`deadlineMs`) are calculated and passed to the Inference Service.
+- [ ] Context limits are estimated using bounded heuristics without provider tokenizers; downstream execution engine (Model Gateway behind Inference) remains authoritative for execution.
+- [ ] Execution token usage is propagated from Inference Service (originating from Model Gateway); durable usage aggregation and billing accounting are reserved for Platform Usage service.
 - [ ] Internal error details and provider secrets are completely sanitized before returning responses.
 - [ ] Clean / Hexagonal Architecture is strictly maintained with zero circular dependencies.
 - [ ] Standard `/health/liveness` and `/health/readiness` probes are exposed.

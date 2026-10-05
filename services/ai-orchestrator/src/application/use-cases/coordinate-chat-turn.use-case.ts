@@ -23,15 +23,15 @@ import type {
   OrchestratorChatRequest,
   OrchestratorChatResponse,
 } from '../dtos/chat.dto.js';
-import type { GatewayDispatchPayload } from '../dtos/dispatch.dto.js';
+import type { InferenceExecutionRequest } from '../dtos/inference.dto.js';
 import type { ModelResolutionResult } from '../dtos/resolution.dto.js';
-import type { ModelGatewayPort } from '../ports/model-gateway.port.js';
+import type { InferencePort } from '../ports/inference.port.js';
 import type { ModelRegistryPort } from '../ports/model-registry.port.js';
 import type { ResolutionCachePort } from '../ports/resolution-cache.port.js';
 
 export interface CoordinateChatTurnOptions {
   readonly modelRegistry: ModelRegistryPort;
-  readonly modelGateway: ModelGatewayPort;
+  readonly inference: InferencePort;
   readonly resolutionCache?: ResolutionCachePort | undefined;
   readonly tracer?: AiTracer | undefined;
   readonly metrics?: AiMetricsRecorder | undefined;
@@ -43,7 +43,7 @@ export interface CoordinateChatTurnOptions {
 
 export class CoordinateChatTurnUseCase {
   private readonly modelRegistry: ModelRegistryPort;
-  private readonly modelGateway: ModelGatewayPort;
+  private readonly inference: InferencePort;
   private readonly resolutionCache?: ResolutionCachePort | undefined;
   private readonly tracer: AiTracer;
   private readonly metrics: AiMetricsRecorder;
@@ -54,7 +54,7 @@ export class CoordinateChatTurnUseCase {
 
   constructor(options: CoordinateChatTurnOptions) {
     this.modelRegistry = options.modelRegistry;
-    this.modelGateway = options.modelGateway;
+    this.inference = options.inference;
     this.resolutionCache = options.resolutionCache;
     this.tracer = options.tracer ?? new NoopAiTracer();
     this.metrics = options.metrics ?? new NoopAiMetricsRecorder();
@@ -69,7 +69,7 @@ export class CoordinateChatTurnUseCase {
 
   /**
    * Coordinates a complete unary chat turn: validates, resolves, bounds context,
-   * dispatches to Model Gateway, and returns the response.
+   * dispatches to Inference Service, and returns the response.
    */
   public async executeUnary(
     request: OrchestratorChatRequest,
@@ -139,10 +139,10 @@ export class CoordinateChatTurnUseCase {
         context.correlationId,
       );
 
-      // 4. Construct dispatch payload
+      // 4. Construct inference execution request
       const exposeReasoning = request.exposeReasoning ?? this.privacyPolicy.exposeReasoning;
 
-      const dispatchPayload: GatewayDispatchPayload = {
+      const inferenceRequest: InferenceExecutionRequest = {
         requestId: context.requestId,
         correlationId: context.correlationId,
         conversationId: request.conversationId,
@@ -161,19 +161,21 @@ export class CoordinateChatTurnUseCase {
         pricing: resolution.pricing,
         eligibleTargets: resolution.eligibleTargets,
         routingPolicy: resolution.routingPolicy,
+        privacyPolicy: {
+          exposeReasoning,
+          redactThinking: !exposeReasoning,
+          redactThinkingInLogs: true,
+        },
         tenantId: context.tenantId,
         userId: context.userId,
         actorId: context.actorId,
         metadata: request.metadata,
         deadlineMs,
-        exposeReasoning,
       };
 
-      // 5. Dispatch unary to Gateway
-      const completion = await this.modelGateway.dispatchUnary(
-        dispatchPayload,
-        abortController.signal,
-      );
+      // 5. Execute unary through Inference Service
+      const response = await this.inference.executeUnary(inferenceRequest, abortController.signal);
+      const completion = response.data;
 
       const turnLatencyMs = Date.now() - startTime;
       const estimatedCostUsd = calculateTurnCost(resolution.pricing, completion.usage);
@@ -250,7 +252,7 @@ export class CoordinateChatTurnUseCase {
 
   /**
    * Coordinates a streaming chat turn: validates, resolves, bounds context,
-   * dispatches to Model Gateway, and yields an AsyncIterable of Server-Sent Events.
+   * dispatches to Inference Service, and yields an AsyncIterable of Server-Sent Events.
    */
   public async *executeStream(
     request: OrchestratorChatRequest,
@@ -321,10 +323,10 @@ export class CoordinateChatTurnUseCase {
         context.correlationId,
       );
 
-      // 4. Construct dispatch payload
+      // 4. Construct inference execution request
       const exposeReasoning = request.exposeReasoning ?? this.privacyPolicy.exposeReasoning;
 
-      const dispatchPayload: GatewayDispatchPayload = {
+      const inferenceRequest: InferenceExecutionRequest = {
         requestId: context.requestId,
         correlationId: context.correlationId,
         conversationId: request.conversationId,
@@ -343,16 +345,20 @@ export class CoordinateChatTurnUseCase {
         pricing: resolution.pricing,
         eligibleTargets: resolution.eligibleTargets,
         routingPolicy: resolution.routingPolicy,
+        privacyPolicy: {
+          exposeReasoning,
+          redactThinking: !exposeReasoning,
+          redactThinkingInLogs: true,
+        },
         tenantId: context.tenantId,
         userId: context.userId,
         actorId: context.actorId,
         metadata: request.metadata,
         deadlineMs,
-        exposeReasoning,
       };
 
-      // 5. Dispatch stream to Gateway
-      const stream = this.modelGateway.dispatchStream(dispatchPayload, abortController.signal);
+      // 5. Execute stream through Inference Service
+      const stream = this.inference.executeStream(inferenceRequest, abortController.signal);
 
       for await (const event of stream) {
         emittedFirstEvent = true;

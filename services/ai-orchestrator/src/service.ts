@@ -3,12 +3,12 @@ import type { AiMetricsRecorder, AiTracer } from '@oicunt-ai/observability';
 import { NoopAiMetricsRecorder, NoopAiTracer } from '@oicunt-ai/observability';
 import { loadAiOrchestratorConfig, type AiOrchestratorConfig } from './config.js';
 import type { ModelRegistryPort } from './application/ports/model-registry.port.js';
-import type { ModelGatewayPort } from './application/ports/model-gateway.port.js';
+import type { InferencePort } from './application/ports/inference.port.js';
 import type { ResolutionCachePort } from './application/ports/resolution-cache.port.js';
 import { CoordinateChatTurnUseCase } from './application/use-cases/coordinate-chat-turn.use-case.js';
 import { InMemoryResolutionCache } from './infrastructure/cache/in-memory-resolution-cache.js';
 import { HttpModelRegistryClient } from './infrastructure/clients/http-model-registry.client.js';
-import { HttpModelGatewayClient } from './infrastructure/clients/http-model-gateway.client.js';
+import { HttpInferenceClient } from './infrastructure/clients/http-inference.client.js';
 import { JsonLogger } from './infrastructure/logging/logger.js';
 import { ChatController } from './interfaces/http/controllers/chat.controller.js';
 import { createHttpRouter } from './interfaces/http/router.js';
@@ -16,7 +16,7 @@ import { createHttpRouter } from './interfaces/http/router.js';
 export interface AiOrchestratorDependencies {
   readonly config?: AiOrchestratorConfig | undefined;
   readonly modelRegistry?: ModelRegistryPort | undefined;
-  readonly modelGateway?: ModelGatewayPort | undefined;
+  readonly inference?: InferencePort | undefined;
   readonly resolutionCache?: ResolutionCachePort | undefined;
   readonly tracer?: AiTracer | undefined;
   readonly metrics?: AiMetricsRecorder | undefined;
@@ -25,7 +25,7 @@ export interface AiOrchestratorDependencies {
 export class AiOrchestratorService {
   private readonly config: AiOrchestratorConfig;
   private readonly modelRegistry: ModelRegistryPort;
-  private readonly modelGateway: ModelGatewayPort;
+  private readonly inference: InferencePort;
   private readonly resolutionCache: ResolutionCachePort;
   private readonly logger: JsonLogger;
   private readonly coordinateUseCase: CoordinateChatTurnUseCase;
@@ -43,10 +43,10 @@ export class AiOrchestratorService {
         internalToken: this.config.internalToken,
       });
 
-    this.modelGateway =
-      dependencies.modelGateway ??
-      new HttpModelGatewayClient({
-        baseUrl: this.config.modelGatewayBaseUrl,
+    this.inference =
+      dependencies.inference ??
+      new HttpInferenceClient({
+        baseUrl: this.config.inferenceBaseUrl,
         internalToken: this.config.internalToken,
       });
 
@@ -60,7 +60,7 @@ export class AiOrchestratorService {
 
     this.coordinateUseCase = new CoordinateChatTurnUseCase({
       modelRegistry: this.modelRegistry,
-      modelGateway: this.modelGateway,
+      inference: this.inference,
       resolutionCache: this.resolutionCache,
       tracer: dependencies.tracer ?? new NoopAiTracer(),
       metrics: dependencies.metrics ?? new NoopAiMetricsRecorder(),
@@ -87,8 +87,8 @@ export class AiOrchestratorService {
     return this.modelRegistry;
   }
 
-  public getModelGateway(): ModelGatewayPort {
-    return this.modelGateway;
+  public getInference(): InferencePort {
+    return this.inference;
   }
 
   public getResolutionCache(): ResolutionCachePort {

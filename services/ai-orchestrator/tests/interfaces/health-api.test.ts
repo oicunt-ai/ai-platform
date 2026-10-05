@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { AiOrchestratorService } from '../../src/service.js';
 import { loadAiOrchestratorConfig } from '../../src/config.js';
 import { FakeModelRegistry } from '../test-doubles/fake-model-registry.js';
-import { FakeModelGateway } from '../test-doubles/fake-model-gateway.js';
+import { FakeInference } from '../test-doubles/fake-inference.js';
 
 interface TestHealthResponse {
   readonly success: boolean;
@@ -28,7 +28,7 @@ describe('HTTP Interfaces - Health API', () => {
     service = new AiOrchestratorService({
       config,
       modelRegistry: new FakeModelRegistry(),
-      modelGateway: new FakeModelGateway(),
+      inference: new FakeInference(),
     });
 
     const port = await service.start();
