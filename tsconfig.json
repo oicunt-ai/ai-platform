@@ -9,6 +9,7 @@
     { "path": "./packages/mcp-types" },
     { "path": "./packages/observability" },
     { "path": "./templates/service" },
-    { "path": "./services/model-registry" }
+    { "path": "./services/model-registry" },
+    { "path": "./services/model-gateway" }
   ]
 }

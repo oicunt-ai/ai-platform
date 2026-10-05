@@ -18,6 +18,10 @@ export default defineConfig({
         import.meta.dirname,
         'services/model-registry/src/index.ts',
       ),
+      '@oicunt-ai/service-model-gateway': resolve(
+        import.meta.dirname,
+        'services/model-gateway/src/index.ts',
+      ),
     },
   },
   test: {

@@ -13,7 +13,8 @@
       "@oicunt-ai/mcp-types": ["./packages/mcp-types/src/index.ts"],
       "@oicunt-ai/observability": ["./packages/observability/src/index.ts"],
       "@oicunt-ai/service-template": ["./templates/service/src/index.ts"],
-      "@oicunt-ai/service-model-registry": ["./services/model-registry/src/index.ts"]
+      "@oicunt-ai/service-model-registry": ["./services/model-registry/src/index.ts"],
+      "@oicunt-ai/service-model-gateway": ["./services/model-gateway/src/index.ts"]
     }
   },
   "include": [
