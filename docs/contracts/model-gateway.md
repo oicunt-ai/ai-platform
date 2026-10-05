@@ -10,7 +10,7 @@
 
 The **Model Gateway** (`services/model-gateway`) is the singular, authoritative **data-plane execution boundary** for all AI model inference across the **OICUNT AI Platform**. It serves as the sole egress point to upstream AI model providers (such as Anthropic, OpenAI, Google Gemini, AWS Bedrock, Azure OpenAI, and future self-hosted OICUNT inference clusters).
 
-The Model Gateway guarantees that neither client applications (BILLY) nor middle-tier service orchestrators (AI Orchestrator) ever communicate directly with external model providers, hold provider credentials, or couple their business logic to vendor-specific SDKs, wire protocols, or error schemas.
+The Model Gateway guarantees that neither client applications (BILLY) nor middle-tier service orchestrators (AI Orchestrator; see [AI Orchestrator Contract](./ai-orchestrator.md)) ever communicate directly with external model providers, hold provider credentials, or couple their business logic to vendor-specific SDKs, wire protocols, or error schemas.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐

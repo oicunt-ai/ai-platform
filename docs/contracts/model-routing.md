@@ -16,6 +16,7 @@ For specialized service-level implementation specifications, see:
 
 - [Model Registry Implementation Contract](./model-registry.md)
 - [Model Gateway Architecture Contract](./model-gateway.md)
+- [AI Orchestrator Implementation Contract](./ai-orchestrator.md)
 
 ### 1.1 Canonical Request Flow
 
@@ -141,6 +142,7 @@ The separation between Model Registry and Model Gateway enforces a fundamental a
 1. **BILLY and AI Orchestrator must NEVER contain provider-specific model IDs** (e.g. `claude-3-5-sonnet-20241022`, `gpt-4o-2024-08-06`).
 2. **BILLY and AI Orchestrator must NEVER contain provider SDK logic** or communicate directly with upstream provider endpoints.
 3. **Upstream provider credentials must NEVER leave the Model Gateway / Provider Adapter boundary.**
+4. **AI Orchestrator preserves the user-selected canonical model identity and reasoning effort level** (see [AI Orchestrator Contract](./ai-orchestrator.md)), never performing arbitrary cross-model substitution.
 
 ---
 
