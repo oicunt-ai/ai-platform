@@ -15,6 +15,7 @@ export interface CreateCanonicalModelParams {
   readonly id: CanonicalModelId;
   readonly displayName: string;
   readonly description: string;
+  readonly family?: string | undefined;
   readonly activeVersion: string;
   readonly versionLock?: number | undefined;
   readonly versions?: readonly ModelVersion[] | undefined;
@@ -25,12 +26,13 @@ export interface CreateCanonicalModelParams {
   readonly updatedAt?: string | undefined;
 }
 
-const CANONICAL_MODEL_ID_REGEX = /^oicunt\.model\.[a-z0-9-]+$/;
+const CANONICAL_MODEL_ID_REGEX = /^[a-z0-9][a-z0-9._-]{1,63}$/;
 
 export class CanonicalModel {
   public readonly id: CanonicalModelId;
   private _displayName: string;
   private _description: string;
+  private _family?: string | undefined;
   private _activeVersion: string;
   private _versionLock: number;
   private readonly _versions: Map<string, ModelVersion> = new Map();
@@ -49,6 +51,7 @@ export class CanonicalModel {
     this.id = params.id;
     this._displayName = params.displayName.trim();
     this._description = params.description.trim();
+    this._family = params.family?.trim() || undefined;
     this._activeVersion = params.activeVersion.trim();
     this._versionLock = params.versionLock ?? 1;
     this.createdAt = params.createdAt ?? new Date().toISOString();
@@ -86,6 +89,10 @@ export class CanonicalModel {
 
   get description(): string {
     return this._description;
+  }
+
+  get family(): string | undefined {
+    return this._family;
   }
 
   get activeVersion(): string {
@@ -279,6 +286,7 @@ export class CanonicalModel {
       id: this.id,
       displayName: this._displayName,
       description: this._description,
+      family: this._family,
       activeVersion: this._activeVersion,
       versionLock: this._versionLock,
       createdAt: this.createdAt,
@@ -350,7 +358,7 @@ export class CanonicalModel {
   private validateCanonicalModelId(id: string): void {
     if (!id || typeof id !== 'string' || !CANONICAL_MODEL_ID_REGEX.test(id)) {
       throw new ModelValidationError(
-        `Invalid canonical model ID '${id}'. Must match pattern '^oicunt\\.model\\.[a-z0-9\\-]+$'`,
+        `Invalid canonical model ID '${id}'. Must match pattern '^[a-z0-9][a-z0-9._-]{1,63}$' (e.g. 'claude-sonnet', 'gpt-4o', 'gemini-pro')`,
         'id',
       );
     }

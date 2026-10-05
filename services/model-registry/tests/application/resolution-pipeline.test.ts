@@ -126,7 +126,7 @@ describe('ResolveModelUseCase - 7-Step Resolution Pipeline', () => {
   it('Step 1: rejects invalid canonical model ID pattern or missing correlation ID', async () => {
     await expect(
       useCase.execute({
-        canonicalModelId: 'invalid-pattern' as unknown as CanonicalModelId,
+        canonicalModelId: 'INVALID_UPPERCASE!' as unknown as CanonicalModelId,
         correlationId: 'corr-1',
       }),
     ).rejects.toThrowError(ModelValidationError);

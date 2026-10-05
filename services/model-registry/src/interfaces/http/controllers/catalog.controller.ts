@@ -17,6 +17,7 @@ import type {
   CreateCanonicalModelUseCase,
   CreateModelTargetUseCase,
   CreateModelVersionUseCase,
+  GetModelCatalogUseCase,
   GetModelUseCase,
   ListModelsUseCase,
   SetModelAliasUseCase,
@@ -30,6 +31,7 @@ import { sendJsonResponse } from '../middleware.js';
 export interface CatalogControllerDependencies {
   readonly getModelUseCase: GetModelUseCase;
   readonly listModelsUseCase: ListModelsUseCase;
+  readonly getModelCatalogUseCase: GetModelCatalogUseCase;
   readonly createCanonicalModelUseCase: CreateCanonicalModelUseCase;
   readonly createModelVersionUseCase: CreateModelVersionUseCase;
   readonly updateModelVersionStatusUseCase: UpdateModelVersionStatusUseCase;
@@ -46,6 +48,23 @@ export class CatalogController {
   public async handleList(res: ServerResponse, context: RequestContext): Promise<void> {
     const models = await this.deps.listModelsUseCase.execute();
     sendJsonResponse(res, 200, models, context);
+  }
+
+  public async handleGetCatalog(
+    res: ServerResponse,
+    url: URL,
+    context: RequestContext,
+  ): Promise<void> {
+    const selectableOnlyParam = url.searchParams.get('selectableOnly');
+    const selectableOnly = selectableOnlyParam === null ? true : selectableOnlyParam === 'true';
+    const family = url.searchParams.get('family')?.trim() || undefined;
+
+    const catalog = await this.deps.getModelCatalogUseCase.execute({
+      selectableOnly,
+      family,
+    });
+
+    sendJsonResponse(res, 200, catalog, context);
   }
 
   public async handleGet(
@@ -67,6 +86,7 @@ export class CatalogController {
       id: CanonicalModelId;
       displayName: string;
       description: string;
+      family?: string;
       activeVersion: string;
     }>(req, this.deps.maxBodySizeBytes);
 
@@ -74,6 +94,7 @@ export class CatalogController {
       id: body.id,
       displayName: body.displayName,
       description: body.description,
+      family: body.family,
       activeVersion: body.activeVersion,
       actorId: context.actorId!,
       correlationId: context.correlationId,

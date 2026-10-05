@@ -10,6 +10,7 @@ export class ListModelsUseCase {
       id: model.id,
       displayName: model.displayName,
       description: model.description,
+      family: model.family,
       activeVersion: model.activeVersion,
       versionsCount: model.getVersions().length,
       targetsCount: model.getTargets().length,

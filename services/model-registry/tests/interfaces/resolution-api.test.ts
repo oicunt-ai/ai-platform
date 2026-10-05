@@ -227,11 +227,14 @@ describe('HTTP Resolution API Integration', () => {
   });
 
   it('returns 400 VALIDATION_FAILED when model ID format is invalid', async () => {
-    const res = await fetch(`http://127.0.0.1:${port}/internal/v1/models/resolve/invalid-format`, {
-      headers: {
-        'x-service-name': 'ai-orchestrator',
+    const res = await fetch(
+      `http://127.0.0.1:${port}/internal/v1/models/resolve/INVALID_UPPERCASE!`,
+      {
+        headers: {
+          'x-service-name': 'ai-orchestrator',
+        },
       },
-    });
+    );
 
     expect(res.status).toBe(400);
     const json = (await res.json()) as {

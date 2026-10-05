@@ -45,11 +45,11 @@ describe('CanonicalModel Aggregate Root', () => {
     return { model, v1 };
   };
 
-  it('enforces canonical model ID pattern ^oicunt\\.model\\.[a-z0-9\\-]+$', () => {
+  it('enforces canonical model ID pattern ^[a-z0-9][a-z0-9._-]{1,63}$', () => {
     expect(
       () =>
         new CanonicalModel({
-          id: 'invalid-id' as unknown as CanonicalModelId,
+          id: 'INVALID_UPPERCASE' as unknown as CanonicalModelId,
           displayName: 'Test',
           description: 'Desc',
           activeVersion: 'v1.0.0',
@@ -59,20 +59,40 @@ describe('CanonicalModel Aggregate Root', () => {
     expect(
       () =>
         new CanonicalModel({
-          id: 'oicunt.model.coding.v1' as unknown as CanonicalModelId, // contains dot at end
+          id: 'invalid@symbols!' as unknown as CanonicalModelId,
           displayName: 'Test',
           description: 'Desc',
           activeVersion: 'v1.0.0',
         }),
     ).toThrowError(ModelValidationError);
 
-    const valid = new CanonicalModel({
+    // Valid user-facing models:
+    const sonnet = new CanonicalModel({
+      id: 'claude-sonnet',
+      displayName: 'Claude Sonnet',
+      description: 'Frontier reasoning model',
+      family: 'anthropic',
+      activeVersion: 'v1.0.0',
+    });
+    expect(sonnet.id).toBe('claude-sonnet');
+    expect(sonnet.family).toBe('anthropic');
+
+    const gpt = new CanonicalModel({
+      id: 'gpt-4o',
+      displayName: 'GPT-4o',
+      description: 'Omni model',
+      family: 'openai',
+      activeVersion: 'v1.0.0',
+    });
+    expect(gpt.id).toBe('gpt-4o');
+
+    const legacy = new CanonicalModel({
       id: 'oicunt.model.coding-expert',
       displayName: 'Coding Expert',
       description: 'Expert coding model',
       activeVersion: 'v1.0.0',
     });
-    expect(valid.id).toBe('oicunt.model.coding-expert');
+    expect(legacy.id).toBe('oicunt.model.coding-expert');
   });
 
   it('rejects empty display name or description', () => {

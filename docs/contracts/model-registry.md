@@ -1,6 +1,6 @@
 # OICUNT AI Platform Contract: Model Registry Implementation Specification
 
-**Document Version**: 1.0.0  
+**Document Version**: 1.1.0  
 **Status**: Authoritative Architectural & Implementation Contract  
 **Classification**: Engineering Architecture Standard
 
@@ -10,14 +10,18 @@
 
 The **Model Registry** (`services/model-registry`) is the singular, authoritative **control-plane directory** for all AI models, capability configurations, context limits, pricing tables, and execution target mappings in the **OICUNT AI Platform**.
 
-It provides deterministic resolution of public **Canonical Model Identifiers** (`oicunt.model.*`) into concrete, eligible execution targets and routing policies consumed by the **AI Orchestrator** and executed by the **Model Gateway**.
+It serves two primary operational roles:
+
+1. **Dynamic Model Catalog Provider for Client Applications (Model Selection)**: Exposes a user-facing, sanitized model catalog (`GET /internal/v1/catalog`) consumed by BILLY and client orchestrators to render dynamic model pickers (e.g. Claude Sonnet, Claude Opus, GPT-4o, Gemini Pro) and dynamic reasoning effort selectors (`low`, `medium`, `high`).
+2. **Deterministic Model Resolution Authority (Model Resolution)**: Deterministically resolves user-selected canonical models and optional effort levels into concrete, eligible execution targets, token limits, and routing policies consumed by the **AI Orchestrator** and executed by the **Model Gateway**.
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                        AI Orchestrator / BILLY                         │
 └──────────────────────────────────┬─────────────────────────────────────┘
                                    │
-                                   │ 1. GET /internal/v1/models/resolve/:canonicalModelId
+                                   │ 1a. GET /internal/v1/catalog (Dynamic Catalog Discovery)
+                                   │ 1b. GET /internal/v1/models/resolve/:id?effort=high
                                    ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │                     Model Registry (Control Plane)                     │
@@ -44,16 +48,22 @@ It provides deterministic resolution of public **Canonical Model Identifiers** (
 
 ### 2.1 What the Model Registry Owns
 
-1. **Canonical OICUNT Model Identifiers**: Authoritative catalog of model families (`oicunt.model.general`, `oicunt.model.reasoning`, `oicunt.model.coding`, etc.).
-2. **Model Versions**: Semantic version tracking and immutable release records (`v1.0.0`, `v1.2.0`).
-3. **Model Metadata**: Display names, descriptions, and modality profiles (`text`, `image`, `audio`, `video`, `embedding`).
-4. **Capabilities & Limit Profiles**: Feature flags (`streaming`, `toolCalling`, `structuredOutputs`, `reasoning`) and hard token bounds (`contextWindowTokens`, `maxOutputTokens`).
-5. **Pricing Metadata**: Current input/output/cached token cost tables per million tokens.
-6. **Availability Status**: Administrative lifecycle states (`available`, `degraded`, `maintenance`, `deprecated`).
-7. **Model Aliases**: Dynamic pointers (`default`, `latest`, `preview`, `fast`) and tenant-specific overrides.
-8. **Eligible Provider / Model Targets**: Approved mapping of canonical models to underlying vendor models (`provider`, `upstreamModelId`, `region`, `priority`, `weight`).
-9. **Routing Policies**: Strategy rules (`priority-fallback`, `weighted-round-robin`, `lowest-latency`), max fallback counts, and degradation behaviors.
-10. **Audit History**: Complete, tamper-evident ledger of every mutation to models, versions, targets, aliases, and policies.
+1. **User-Facing Canonical Model Identifiers**: Authoritative catalog of model families and user-selectable models (`claude-sonnet`, `claude-opus`, `claude-haiku`, `gpt-4o`, `gemini-pro`, as well as namespaced identifiers like `oicunt.model.general`).
+2. **Model Family Grouping**: Categorization by underlying model lineage (`claude`, `gpt`, `gemini`, etc.).
+3. **Model Selection vs. Model Resolution Separation**:
+   - **Model Selection**: Client/BILLY querying the dynamic catalog to present user options without exposing provider targets or secrets.
+   - **Model Resolution**: OICUNT determining eligible execution endpoints and applying routing rules.
+4. **Effort & Reasoning Governance**: Dynamic validation of reasoning effort parameters (`low`, `medium`, `high`) against declared model capabilities.
+5. **Model Versions**: Semantic version tracking and immutable release records (`v1.0.0`, `v1.2.0`).
+6. **Model Metadata**: Display names, descriptions, and modality profiles (`text`, `image`, `audio`, `video`, `embedding`).
+7. **Capabilities & Limit Profiles**: Feature flags (`streaming`, `toolCalling`, `structuredOutputs`, `reasoning`), supported effort levels (`supportedEffortLevels`, `defaultEffortLevel`), and hard token bounds (`contextWindowTokens`, `maxOutputTokens`).
+8. **Pricing Metadata**: Current input/output/cached token cost tables per million tokens.
+9. **Availability Status**: Administrative lifecycle states (`available`, `degraded`, `maintenance`, `deprecated`).
+10. **Model Aliases**: Dynamic pointers (`default`, `latest`, `preview`, `fast`) and tenant-specific overrides.
+11. **Eligible Provider / Model Targets**: Approved mapping of canonical models to underlying vendor models (`provider`, `upstreamModelId`, `region`, `priority`, `weight`).
+12. **Transparent Provider Replacement**: Support for multiple provider targets per model version (e.g. Anthropic direct + AWS Bedrock fallback), enabling transparent target cordoning and failover without changing the user-selected model.
+13. **Routing Policies**: Strategy rules (`priority-fallback`, `weighted-round-robin`, `lowest-latency`), max fallback counts, and degradation behaviors.
+14. **Audit History**: Complete, tamper-evident ledger of every mutation to models, versions, targets, aliases, and policies.
 
 ### 2.2 Fundamental Architectural Invariants
 
@@ -64,7 +74,7 @@ It provides deterministic resolution of public **Canonical Model Identifiers** (
 2. **Zero Provider Credentials**: Model Registry **never** stores, reads, or possesses provider API keys, tokens, or IAM secrets. Provider credentials reside exclusively in Model Gateway provider adapters.
 3. **Zero Provider SDK Dependencies**: Model Registry **never** imports vendor SDKs (`@anthropic-ai/sdk`, `openai`, `@google/genai`).
 4. **Internal Upstream Identifiers**: Provider-specific model IDs (e.g. `claude-3-5-sonnet-20241022`, `gpt-4o-2024-08-06`) are strictly internal target data. They are never exposed to BILLY or external clients.
-5. **Canonical Model IDs as Public Abstraction**: Only canonical identifiers (`oicunt.model.*`) are surfaced to client applications and orchestrators.
+5. **Effort is a Parameter, Not a Model Identity**: Reasoning effort levels (`low`, `medium`, `high`) are model capabilities and runtime request parameters, never separate canonical models.
 6. **Separation of What vs. How**: Model Registry decides **WHAT** model targets are eligible; Model Gateway decides **HOW** to execute against those eligible targets.
 7. **Exclusive Database Ownership**: Model Registry owns its dedicated PostgreSQL database/schema. No database or table sharing with Model Gateway, Orchestrator, or any other service.
 8. **Deterministic Resolution**: For any given effective configuration state, timestamp, and tenant context, resolution must produce the exact same deterministic target list and ordering.
@@ -80,40 +90,47 @@ The Model Registry domain follows Domain-Driven Design (DDD). The **Canonical Mo
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                  CanonicalModel (Aggregate Root)                       │
-│  id: CanonicalModelId ("oicunt.model.general")                         │
-│  name: "General Intelligence"                                          │
-│  description: "Frontier conversational and reasoning model"            │
-│  activeVersion: "v1.2.0"                                               │
+│  id: CanonicalModelId ("claude-sonnet" | "gpt-4o")                     │
+│  name: "Claude Sonnet"                                                 │
+│  description: "Balanced frontier reasoning and coding"                 │
+│  family: "claude"                                                      │
+│  activeVersion: "v1.0.0"                                               │
 │  createdAt, updatedAt                                                  │
 ├────────────────────────────────────────────────────────────────────────┤
 │  ├── ModelVersion (Entity, 1..*)                                       │
-│  │     version: "v1.2.0"                                               │
+│  │     version: "v1.0.0"                                               │
 │  │     modalities: [text, image]                                       │
 │  │     capabilities: ModelCapabilities (Value Object)                  │
+│  │       ├── reasoning: true                                           │
+│  │       ├── supportedEffortLevels: ["low", "medium", "high"]          │
+│  │       └── defaultEffortLevel: "medium"                              │
 │  │     limits: ModelLimits (Value Object)                              │
 │  │     pricing: ModelPricing (Value Object)                            │
 │  │     status: AvailabilityStatus ("available")                        │
 │  │     isImmutable: true                                               │
 │  │                                                                     │
 │  ├── ModelTarget (Entity, 1..*)                                        │
-│  │     targetId: "target-anthropic-sonnet-us"                          │
+│  │     targetId: "target-anthropic-direct"                             │
 │  │     provider: "anthropic" (ModelProviderType)                       │
 │  │     upstreamModelId: "claude-3-5-sonnet-20241022"                   │
 │  │     priority: 1                                                     │
 │  │     weight: 100                                                     │
-│  │     region: "us-east-1"                                             │
 │  │     status: AvailabilityStatus ("available")                        │
-│  │     supportsStreaming: true                                         │
+│  │                                                                     │
+│  │     targetId: "target-bedrock-fallback"                             │
+│  │     provider: "bedrock" (ModelProviderType)                         │
+│  │     upstreamModelId: "anthropic.claude-3-5-sonnet-20241022-v2:0"    │
+│  │     priority: 2                                                     │
+│  │     weight: 100                                                     │
+│  │     status: AvailabilityStatus ("available")                        │
 │  │                                                                     │
 │  ├── RoutingPolicy (Entity / Value Object, 1..1)                       │
 │  │     strategy: "priority-fallback"                                   │
 │  │     maxFallbackAttempts: 2                                          │
-│  │     requireHealthyTarget: true                                      │
-│  │     degradationBehavior: "fail-fast"                                │
 │  │                                                                     │
 │  └── ModelAlias (Entity, 0..*)                                         │
 │        aliasName: "latest"                                             │
-│        resolvedVersion: "v1.2.0"                                       │
+│        resolvedVersion: "v1.0.0"                                       │
 │        tenantId?: string                                               │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -173,31 +190,32 @@ The Model Registry strictly owns its persistence layer. It requires a dedicated 
 
 #### 1. Table `canonical_models`
 
-| Column           | Type           | Constraints              | Description                                              |
-| ---------------- | -------------- | ------------------------ | -------------------------------------------------------- |
-| `id`             | `VARCHAR(64)`  | `PRIMARY KEY`            | Canonical model identifier (e.g. `oicunt.model.general`) |
-| `display_name`   | `VARCHAR(128)` | `NOT NULL`               | Human-readable name                                      |
-| `description`    | `TEXT`         | `NOT NULL`               | Description of model capabilities                        |
-| `active_version` | `VARCHAR(32)`  | `NOT NULL`               | Currently pinned active version (e.g. `v1.2.0`)          |
-| `created_at`     | `TIMESTAMPTZ`  | `NOT NULL DEFAULT NOW()` | Record creation timestamp                                |
-| `updated_at`     | `TIMESTAMPTZ`  | `NOT NULL DEFAULT NOW()` | Record last modification timestamp                       |
+| Column           | Type           | Constraints              | Description                                                               |
+| ---------------- | -------------- | ------------------------ | ------------------------------------------------------------------------- |
+| `id`             | `VARCHAR(64)`  | `PRIMARY KEY`            | Canonical model identifier (e.g. `claude-sonnet`, `oicunt.model.general`) |
+| `display_name`   | `VARCHAR(128)` | `NOT NULL`               | Human-readable name (e.g. `Claude Sonnet`)                                |
+| `description`    | `TEXT`         | `NOT NULL`               | Description of model capabilities                                         |
+| `family`         | `VARCHAR(64)`  | `NULL`                   | Model family grouping (e.g. `claude`, `gpt`, `gemini`)                    |
+| `active_version` | `VARCHAR(32)`  | `NOT NULL`               | Currently pinned active version (e.g. `v1.0.0`)                           |
+| `created_at`     | `TIMESTAMPTZ`  | `NOT NULL DEFAULT NOW()` | Record creation timestamp                                                 |
+| `updated_at`     | `TIMESTAMPTZ`  | `NOT NULL DEFAULT NOW()` | Record last modification timestamp                                        |
 
 #### 2. Table `model_versions`
 
-| Column               | Type                                   | Constraints                                | Description                                             |
-| -------------------- | -------------------------------------- | ------------------------------------------ | ------------------------------------------------------- |
-| `id`                 | `UUID`                                 | `PRIMARY KEY DEFAULT gen_random_uuid()`    | Unique version record ID                                |
-| `canonical_model_id` | `VARCHAR(64)`                          | `NOT NULL REFERENCES canonical_models(id)` | Parent canonical model                                  |
-| `version`            | `VARCHAR(32)`                          | `NOT NULL`                                 | Semantic version string (e.g. `v1.2.0`)                 |
-| `modalities`         | `VARCHAR(32)[]`                        | `NOT NULL`                                 | Array of supported modalities (`text`, `image`, etc.)   |
-| `capabilities`       | `JSONB`                                | `NOT NULL`                                 | Feature capabilities (`streaming`, `toolCalling`, etc.) |
-| `limits`             | `JSONB`                                | `NOT NULL`                                 | Limits (`contextWindowTokens`, `maxOutputTokens`)       |
-| `pricing`            | `JSONB`                                | `NOT NULL`                                 | Pricing structure per 1M tokens                         |
-| `status`             | `VARCHAR(24)`                          | `NOT NULL DEFAULT 'available'`             | Lifecycle availability status                           |
-| `is_immutable`       | `BOOLEAN`                              | `NOT NULL DEFAULT FALSE`                   | Immutability lock                                       |
-| `created_at`         | `TIMESTAMPTZ`                          | `NOT NULL DEFAULT NOW()`                   | Version creation timestamp                              |
-| `updated_at`         | `TIMESTAMPTZ`                          | `NOT NULL DEFAULT NOW()`                   | Version update timestamp                                |
-| _Constraints_        | `UNIQUE (canonical_model_id, version)` |                                            | Unique semantic version per model                       |
+| Column               | Type                                   | Constraints                                | Description                                                                                                   |
+| -------------------- | -------------------------------------- | ------------------------------------------ | ------------------------------------------------------------------------------------------------------------- |
+| `id`                 | `UUID`                                 | `PRIMARY KEY DEFAULT gen_random_uuid()`    | Unique version record ID                                                                                      |
+| `canonical_model_id` | `VARCHAR(64)`                          | `NOT NULL REFERENCES canonical_models(id)` | Parent canonical model                                                                                        |
+| `version`            | `VARCHAR(32)`                          | `NOT NULL`                                 | Semantic version string (e.g. `v1.0.0`)                                                                       |
+| `modalities`         | `VARCHAR(32)[]`                        | `NOT NULL`                                 | Array of supported modalities (`text`, `image`, etc.)                                                         |
+| `capabilities`       | `JSONB`                                | `NOT NULL`                                 | Feature capabilities (`streaming`, `toolCalling`, `reasoning`, `supportedEffortLevels`, `defaultEffortLevel`) |
+| `limits`             | `JSONB`                                | `NOT NULL`                                 | Limits (`contextWindowTokens`, `maxOutputTokens`)                                                             |
+| `pricing`            | `JSONB`                                | `NOT NULL`                                 | Pricing structure per 1M tokens                                                                               |
+| `status`             | `VARCHAR(24)`                          | `NOT NULL DEFAULT 'available'`             | Lifecycle availability status                                                                                 |
+| `is_immutable`       | `BOOLEAN`                              | `NOT NULL DEFAULT FALSE`                   | Immutability lock                                                                                             |
+| `created_at`         | `TIMESTAMPTZ`                          | `NOT NULL DEFAULT NOW()`                   | Version creation timestamp                                                                                    |
+| `updated_at`         | `TIMESTAMPTZ`                          | `NOT NULL DEFAULT NOW()`                   | Version update timestamp                                                                                      |
+| _Constraints_        | `UNIQUE (canonical_model_id, version)` |                                            | Unique semantic version per model                                                                             |
 
 #### 3. Table `model_targets`
 
@@ -262,11 +280,11 @@ The Model Registry strictly owns its persistence layer. It requires a dedicated 
 
 ## 5. Normalized Model Registry Resolution Pipeline
 
-When the AI Orchestrator requests model resolution, the Model Registry executes a deterministic 7-step pipeline:
+When the AI Orchestrator requests model resolution, the Model Registry executes a deterministic 8-step pipeline:
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│ 1. Parse Inbound Request & Correlation Context         │
+│ 1. Parse Inbound Request, Correlation & Effort Context │
 └───────────────────────────┬────────────────────────────┘
                             │
 ┌───────────────────────────▼────────────────────────────┐
@@ -282,36 +300,47 @@ When the AI Orchestrator requests model resolution, the Model Registry executes 
 └───────────────────────────┬────────────────────────────┘
                             │
 ┌───────────────────────────▼────────────────────────────┐
-│ 5. Filter & Order Eligible Targets (Priority / Weight) │
+│ 5. Reasoning Effort Validation (Capabilities Check)   │
 └───────────────────────────┬────────────────────────────┘
                             │
 ┌───────────────────────────▼────────────────────────────┐
-│ 6. Attach Routing Policy, Limits & Pricing Metadata    │
+│ 6. Filter & Order Eligible Targets (Priority / Weight) │
 └───────────────────────────┬────────────────────────────┘
                             │
 ┌───────────────────────────▼────────────────────────────┐
-│ 7. Return Deterministic ModelResolutionResponse        │
+│ 7. Attach Routing Policy, Limits & Pricing Metadata    │
+└───────────────────────────┬────────────────────────────┘
+                            │
+┌───────────────────────────▼────────────────────────────┐
+│ 8. Return Deterministic ModelResolutionResponse        │
 └────────────────────────────────────────────────────────┘
 ```
 
 ### Step Breakdown
 
-1. **Inbound Validation**: Verifies that `canonicalModelId` adheres to format rules (`oicunt.model.*`) and extracts `X-Correlation-ID`.
+1. **Inbound Validation**: Verifies that `canonicalModelId` adheres to format rules (`/^[a-z0-9][a-z0-9._-]{1,63}$/`), extracts `X-Correlation-ID`, and parses optional `effort` parameter.
 2. **Canonical Model Lookup**: Queries `canonical_models`. If not found, immediately terminates with `404 MODEL_NOT_FOUND`.
 3. **Version & Alias Resolution**:
-   - If a specific version is requested (`v1.2.0`), resolves that version.
+   - If a specific version is requested (`v1.0.0`), resolves that version.
    - If an alias is provided (`latest` or `tenantId` override), resolves the alias to its pinned target version.
    - If omitted, resolves to `canonical_models.active_version`.
 4. **Availability Filtering**:
    - If the resolved version is in `maintenance`, returns `503 MODEL_IN_MAINTENANCE`.
    - If the resolved version is `deprecated`, returns `410 MODEL_DEPRECATED`.
-5. **Eligible Target Selection**:
+5. **Reasoning Effort Validation**:
+   - If `effort` is specified in the request:
+     - Verifies that the resolved version's `capabilities.reasoning` is `true`. If not, returns `400 UNSUPPORTED_EFFORT_LEVEL`.
+     - Verifies that the requested effort is included in `capabilities.supportedEffortLevels`. If not, returns `400 UNSUPPORTED_EFFORT_LEVEL`.
+   - If `effort` is omitted but the model supports effort (`capabilities.supportedEffortLevels` defined), automatically defaults to `capabilities.defaultEffortLevel` (or `'medium'`).
+   - If the model does not support reasoning effort, `effort` remains `undefined`.
+6. **Eligible Target Selection**:
    - Selects all `model_targets` linked to the resolved version where `status = 'available'` (or `'degraded'` if allowed by policy).
-   - Targets in `maintenance` or `deprecated` are strictly excluded.
+   - Targets in `maintenance` (cordoned) or `deprecated` are strictly excluded.
+   - Transparent Provider Replacement: Outages or maintenance cordoning of a primary target (e.g. Anthropic direct) allow seamless failover to secondary targets (e.g. AWS Bedrock) without changing the user's selected canonical model.
    - If zero eligible targets remain, returns `503 NO_ELIGIBLE_TARGETS`.
    - Targets are deterministically ordered by ascending `priority`, then descending `weight`, then target ID.
-6. **Policy & Pricing Attachment**: Attaches the associated `RoutingPolicyConfig`, `ModelLimits`, and `ModelPricing` to the payload.
-7. **Response Delivery**: Emits `ModelResolutionResponse` conforming to `docs/contracts/model-routing.md`.
+7. **Policy & Pricing Attachment**: Attaches the associated `RoutingPolicyConfig`, `ModelLimits`, `ModelPricing`, and effective `effort` to the payload.
+8. **Response Delivery**: Emits `ModelResolutionResponse` conforming to `docs/contracts/model-routing.md`.
 
 ---
 
@@ -321,16 +350,44 @@ All endpoints are strictly internal, authenticated service endpoints. The Model 
 
 ### 6.1 Hot Query Endpoints (High Throughput / Cached)
 
+#### `GET /internal/v1/catalog`
+
+- **Purpose**: Dynamic model catalog discovery for BILLY and client model selectors. Returns user-facing model options without exposing internal provider targets, weights, or secrets.
+- **Query Parameters**:
+  - `selectableOnly` (optional, boolean, default `true`): If `true`, returns only models whose active version is in `available` status.
+  - `family` (optional, string): Filters catalog entries by model family (e.g. `?family=claude` or `?family=gpt`).
+- **Success Response**: `200 OK` with `Array<ModelCatalogEntry>`.
+- **Response Entry Shape**:
+  ```typescript
+  export interface ModelCatalogEntry {
+    readonly id: string;
+    readonly displayName: string;
+    readonly description: string;
+    readonly family?: string;
+    readonly modalities: readonly ModelModality[];
+    readonly capabilities: ModelCapabilities;
+    readonly isReasoning: boolean;
+    readonly supportedEffortLevels?: readonly ReasoningEffortLevel[];
+    readonly defaultEffortLevel?: ReasoningEffortLevel;
+    readonly limits: ModelLimits;
+    readonly pricing: ModelPricing;
+    readonly status: ModelAvailabilityStatus;
+    readonly activeVersion: string;
+  }
+  ```
+
 #### `GET /internal/v1/models/resolve/:canonicalModelId`
 
 - **Purpose**: Fast resolution for AI Orchestrator and Model Gateway.
 - **Query Parameters**:
-  - `version` (optional, string): Request specific version or alias (e.g. `?version=v1.2.0` or `?version=latest`).
+  - `version` (optional, string): Request specific version or alias (e.g. `?version=v1.0.0` or `?version=latest`).
+  - `effort` (optional, string): Request specific reasoning effort level (`low`, `medium`, `high`).
 - **Headers**:
   - `X-Correlation-ID`: Required distributed trace ID.
   - `X-Tenant-ID`: Optional tenant identifier for alias overrides.
-- **Success Response**: `200 OK` with `ModelResolutionResponse` envelope.
+- **Success Response**: `200 OK` with `ModelResolutionResponse` envelope including `effort` and `family`.
 - **Error Responses**:
+  - `400 UNSUPPORTED_EFFORT_LEVEL`: Model does not support reasoning effort or requested effort level is not supported.
   - `404 MODEL_NOT_FOUND`: Canonical model identifier does not exist.
   - `404 VERSION_NOT_FOUND`: Requested version does not exist.
   - `410 MODEL_DEPRECATED`: Model version has been decommissioned.
@@ -339,27 +396,27 @@ All endpoints are strictly internal, authenticated service endpoints. The Model 
 
 #### `GET /internal/v1/models`
 
-- **Purpose**: Lists all active canonical models in the catalog.
+- **Purpose**: Lists all canonical models in the administrative catalog (summaries).
 - **Response**: `200 OK` with `Array<CanonicalModelSummary>`.
 
 #### `GET /internal/v1/models/:canonicalModelId`
 
-- **Purpose**: Retrieves comprehensive model metadata, available versions, and aliases.
+- **Purpose**: Retrieves comprehensive administrative model metadata, available versions, and aliases.
 - **Response**: `200 OK` with `CanonicalModelDetail`.
 
 ---
 
 ### 6.2 Administrative Control-Plane Endpoints (Mutations / Protected)
 
-All mutation endpoints require write authorization and mandate a reason for audit logging.
+All mutation endpoints require write authorization (`ai-platform-admin`) and mandate an actor and audit logging.
 
 | Endpoint                                                         | Method | Purpose                                                                | Mandatory Headers / Body                               |
 | ---------------------------------------------------------------- | :----: | ---------------------------------------------------------------------- | ------------------------------------------------------ |
-| `/internal/v1/models`                                            | `POST` | Registers a new canonical model                                        | `CreateCanonicalModelRequest`, `X-Actor-ID`            |
+| `/internal/v1/models`                                            | `POST` | Registers a new canonical model (with optional `family`)               | `CreateCanonicalModelRequest`, `X-Actor-ID`            |
 | `/internal/v1/models/:canonicalModelId/versions`                 | `POST` | Publishes a new semantic model version                                 | `CreateModelVersionRequest`, `X-Actor-ID`              |
 | `/internal/v1/models/:canonicalModelId/versions/:version/status` | `PUT`  | Updates availability status (`available`, `maintenance`, `deprecated`) | `UpdateStatusRequest`, `X-Actor-ID`, `X-Change-Reason` |
 | `/internal/v1/models/:canonicalModelId/targets`                  | `POST` | Adds an execution target to a version                                  | `CreateModelTargetRequest`, `X-Actor-ID`               |
-| `/internal/v1/models/:canonicalModelId/targets/:targetId/status` | `PUT`  | Cordon / uncordon a specific target                                    | `UpdateTargetStatusRequest`, `X-Actor-ID`              |
+| `/internal/v1/models/:canonicalModelId/targets/:targetId/status` | `PUT`  | Cordon / uncordon a specific target (enables failover)                 | `UpdateTargetStatusRequest`, `X-Actor-ID`              |
 | `/internal/v1/models/:canonicalModelId/routing-policy`           | `PUT`  | Updates routing policy configuration                                   | `UpdateRoutingPolicyRequest`, `X-Actor-ID`             |
 | `/internal/v1/models/:canonicalModelId/aliases`                  | `PUT`  | Updates or binds a model alias                                         | `SetModelAliasRequest`, `X-Actor-ID`                   |
 
@@ -370,7 +427,7 @@ All mutation endpoints require write authorization and mandate a reason for audi
 1. **Zero Provider Secrets**: The Model Registry database and application memory contain zero upstream provider secrets (no Anthropic, OpenAI, or Google keys).
 2. **mTLS / Service Mesh Identity**: Inbound connections require mutual TLS (mTLS) with cryptographically verified service identities.
 3. **Role-Based Service Authorization (RBAC)**:
-   - **`ai-orchestrator`**: Granted `models:read` and `models:resolve` only.
+   - **`ai-orchestrator`**: Granted `models:read`, `catalog:read`, and `models:resolve` only.
    - **`model-gateway`**: Granted `models:read` and `models:resolve` only.
    - **`ai-platform-admin`**: Granted `models:*` (read, write, status-toggle, alias-bind).
 4. **Authoritative Identity Forwarding**: Inbound requests must propagate `X-Correlation-ID`. Identity headers (`X-User-ID`, `X-Tenant-ID`) are trusted only when signed by the internal mesh perimeter.
@@ -400,8 +457,9 @@ To maintain ultra-low latency (<2ms) and decouple runtime inference from databas
 ### 8.1 Caching Specifications
 
 1. **What May Be Cached**:
-   - `ModelResolutionResponse` objects keyed by `${canonicalModelId}:${version}:${tenantId}`.
-   - Canonical model catalog listings (`GET /internal/v1/models`).
+   - `ModelResolutionResponse` objects keyed by `${canonicalModelId}:${version}:${tenantId}:${effort}`.
+   - Dynamic catalog listings (`GET /internal/v1/catalog`).
+   - Canonical model administrative listings (`GET /internal/v1/models`).
 2. **Cache Invalidation Mechanics**:
    - **Event-Driven Invalidation**: Mutations to versions, targets, aliases, or routing policies emit internal domain events (`model.version.updated`, `model.target.cordoned`, `model.alias.changed`).
    - The registry evicts corresponding keys across L2 caches immediately upon event publication.
@@ -418,7 +476,7 @@ To maintain ultra-low latency (<2ms) and decouple runtime inference from databas
 1. **Semantic Versioning**: All model versions conform to `vMAJOR.MINOR.PATCH` (e.g. `v1.0.0`, `v1.2.0`).
 2. **Immutability of Published Versions**:
    - Once a `ModelVersion` is published and marked `active`, its core specifications (`capabilities`, `limits`, `pricing`, `modalities`) become **strictly immutable**.
-   - If pricing changes or context window limits expand upstream, a new semantic version (e.g. `v1.3.0`) must be published.
+   - If pricing changes, context window limits expand upstream, or supported effort levels change, a new semantic version (e.g. `v1.1.0`) must be published.
 3. **Optimistic Locking**: All mutation entities contain a `version` lock column to prevent lost updates during concurrent administrative changes.
 
 ---
@@ -453,8 +511,9 @@ Audit entries are append-only; update and delete operations on the audit table a
 
 ### 11.1 Input Validation Rules
 
-- `canonicalModelId`: Must match regex `^oicunt\.model\.[a-z0-9\-]+$` (e.g. `oicunt.model.general`).
+- `canonicalModelId`: Must match regex `^[a-z0-9][a-z0-9._-]{1,63}$` (supporting both modern model IDs like `claude-sonnet`, `gpt-4o` and namespaced IDs like `oicunt.model.general`).
 - `version`: Must match SemVer format `^v?[0-9]+\.[0-9]+\.[0-9]+$`.
+- `effort`: When specified, must be one of `capabilities.supportedEffortLevels` defined on the model version.
 - `targetWeights`: Target weights for targets sharing the same priority must sum to a positive integer (typically `100`).
 - `limits`: `contextWindowTokens` and `maxOutputTokens` must be strictly positive integers (`> 0`).
 - `pricing`: Token rates must be non-negative floats (`>= 0.0`).
@@ -462,16 +521,17 @@ Audit entries are append-only; update and delete operations on the audit table a
 
 ### 11.2 Error Code Taxonomy
 
-| Error Code                    | HTTP Status | Trigger Condition                                                |
-| ----------------------------- | :---------: | ---------------------------------------------------------------- |
-| `MODEL_NOT_FOUND`             |     404     | Canonical model ID does not exist in catalog                     |
-| `VERSION_NOT_FOUND`           |     404     | Requested version or alias does not exist                        |
-| `MODEL_DEPRECATED`            |     410     | Model version is permanently retired                             |
-| `MODEL_IN_MAINTENANCE`        |     503     | Model version is temporarily offline for maintenance             |
-| `NO_ELIGIBLE_TARGETS`         |     503     | No targets are in `available` state for this version             |
-| `INVALID_ROUTING_POLICY`      |     400     | Target priorities, weights, or strategy parameters violate rules |
-| `ALIAS_CYCLE_DETECTED`        |     400     | Alias points to another alias forming a circular loop            |
-| `IMMUTABLE_VERSION_VIOLATION` |     409     | Attempted mutation of an immutable published version             |
+| Error Code                    | HTTP Status | Trigger Condition                                                   |
+| ----------------------------- | :---------: | ------------------------------------------------------------------- |
+| `MODEL_NOT_FOUND`             |     404     | Canonical model ID does not exist in catalog                        |
+| `VERSION_NOT_FOUND`           |     404     | Requested version or alias does not exist                           |
+| `MODEL_DEPRECATED`            |     410     | Model version is permanently retired                                |
+| `MODEL_IN_MAINTENANCE`        |     503     | Model version is temporarily offline for maintenance                |
+| `NO_ELIGIBLE_TARGETS`         |     503     | No targets are in `available` state for this version                |
+| `UNSUPPORTED_EFFORT_LEVEL`    |     400     | Model does not support reasoning effort or requested effort invalid |
+| `INVALID_ROUTING_POLICY`      |     400     | Target priorities, weights, or strategy parameters violate rules    |
+| `ALIAS_CYCLE_DETECTED`        |     400     | Alias points to another alias forming a circular loop               |
+| `IMMUTABLE_VERSION_VIOLATION` |     409     | Attempted mutation of an immutable published version                |
 
 ---
 

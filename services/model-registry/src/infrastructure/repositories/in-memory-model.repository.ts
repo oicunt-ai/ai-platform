@@ -113,6 +113,7 @@ export class InMemoryModelRepository implements ModelRepositoryPort {
       id: model.id,
       displayName: model.displayName,
       description: model.description,
+      family: model.family,
       activeVersion: model.activeVersion,
       versionLock: model.versionLock,
       versions,

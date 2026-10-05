@@ -24,6 +24,7 @@ export class CreateCanonicalModelUseCase {
       id: dto.id,
       displayName: dto.displayName,
       description: dto.description,
+      family: dto.family,
       activeVersion: dto.activeVersion,
     });
 
@@ -46,6 +47,7 @@ export class CreateCanonicalModelUseCase {
       id: model.id,
       displayName: model.displayName,
       description: model.description,
+      family: model.family,
       activeVersion: model.activeVersion,
       versionLock: model.versionLock,
       versions: [],

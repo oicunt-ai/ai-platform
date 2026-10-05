@@ -96,6 +96,8 @@ export interface ModelAliasData {
   readonly updatedAt: string;
 }
 
+export type { ReasoningEffortLevel, ModelCatalogEntry } from '@oicunt-ai/model-types';
+
 /**
  * Canonical model master record.
  */
@@ -103,6 +105,7 @@ export interface CanonicalModelData {
   readonly id: CanonicalModelId;
   readonly displayName: string;
   readonly description: string;
+  readonly family?: string | undefined;
   readonly activeVersion: string;
   readonly versionLock: number;
   readonly createdAt: string;

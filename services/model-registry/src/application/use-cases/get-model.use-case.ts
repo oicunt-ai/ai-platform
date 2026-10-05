@@ -16,6 +16,7 @@ export class GetModelUseCase {
       id: model.id,
       displayName: model.displayName,
       description: model.description,
+      family: model.family,
       activeVersion: model.activeVersion,
       versionLock: model.versionLock,
       versions: model.getVersions().map((v) => v.toJSON()),

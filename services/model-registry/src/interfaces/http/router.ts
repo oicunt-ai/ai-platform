@@ -55,7 +55,13 @@ export function createHttpRouter(
         return;
       }
 
-      // 3. Catalog Model List & Create: /internal/v1/models
+      // 3. User-Facing Model Catalog: GET /internal/v1/catalog (consumed by BILLY / AI Orchestrator)
+      if (pathname === '/internal/v1/catalog' && method === 'GET') {
+        await options.catalogController.handleGetCatalog(res, url, context);
+        return;
+      }
+
+      // 4. Catalog Model List & Create: /internal/v1/models
       if (pathname === '/internal/v1/models') {
         if (method === 'GET') {
           await options.catalogController.handleList(res, context);

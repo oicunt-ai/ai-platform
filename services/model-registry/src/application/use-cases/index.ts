@@ -1,4 +1,5 @@
 export * from './resolve-model.use-case.js';
+export * from './get-model-catalog.use-case.js';
 export * from './get-model.use-case.js';
 export * from './list-models.use-case.js';
 export * from './create-canonical-model.use-case.js';

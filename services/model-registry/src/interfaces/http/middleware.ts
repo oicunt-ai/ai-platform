@@ -9,6 +9,7 @@ import {
   ModelValidationError,
   NoEligibleTargetsError,
   OptimisticLockError,
+  UnsupportedEffortError,
   VersionNotFoundError,
 } from '../../domain/index.js';
 import type { RequestContext } from './context.js';
@@ -83,6 +84,10 @@ export function handleHttpError(
     code = error.code;
     message = error.message;
   } else if (error instanceof ModelValidationError) {
+    statusCode = 400;
+    code = error.code;
+    message = error.message;
+  } else if (error instanceof UnsupportedEffortError) {
     statusCode = 400;
     code = error.code;
     message = error.message;

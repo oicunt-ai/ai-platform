@@ -1,6 +1,7 @@
 import type {
   CanonicalModelId,
   ModelInvocationParameters,
+  ReasoningEffortLevel,
   TokenUsage,
 } from '@oicunt-ai/model-types';
 
@@ -78,6 +79,7 @@ export interface NormalizedCompletionRequest {
   readonly model: CanonicalModelId;
   readonly messages: readonly ChatMessage[];
   readonly parameters?: ModelInvocationParameters;
+  readonly effort?: ReasoningEffortLevel;
   readonly stream?: boolean;
   readonly tools?: readonly string[];
   readonly metadata?: Record<string, unknown>;

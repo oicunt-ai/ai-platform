@@ -123,25 +123,29 @@ src/
 
 ---
 
-## 3. The 7-Step Model Resolution Pipeline
+## 3. The 8-Step Model Resolution Pipeline
 
-`GET /internal/v1/models/resolve/:canonicalModelId` executes this deterministic 7-step pipeline:
+`GET /internal/v1/models/resolve/:canonicalModelId` executes this deterministic 8-step pipeline:
 
-1. **Request Validation**: Verifies pattern `^oicunt\.model\.[a-z0-9\-]+$` and extracts distributed trace header `X-Correlation-ID`.
+1. **Request Validation**: Verifies pattern `/^[a-z0-9][a-z0-9._-]{1,63}$/` (supports `claude-sonnet`, `gpt-4o`, `oicunt.model.general`), extracts `X-Correlation-ID`, and parses optional `effort`.
 2. **Canonical Model Lookup**: Queries `canonical_models`. If missing, terminates with `404 MODEL_NOT_FOUND`.
 3. **Version & Alias Resolution**:
-   - Resolves explicit version (`?version=v1.2.0`), tenant-specific alias override, global alias (`latest`), or defaults to `active_version`.
+   - Resolves explicit version (`?version=v1.0.0`), tenant-specific alias override, global alias (`latest`), or defaults to `active_version`.
    - Circular alias detection terminates with `400 ALIAS_CYCLE_DETECTED`.
 4. **Availability State Validation**:
    - If version status is `maintenance`, terminates with `503 MODEL_IN_MAINTENANCE`.
    - If version status is `deprecated`, terminates with `410 MODEL_DEPRECATED`.
-5. **Eligible Target Filtering & Deterministic Ordering**:
+5. **Reasoning Effort Validation**:
+   - If `effort` requested, validates that model supports reasoning and that `effort` is in `capabilities.supportedEffortLevels`. Terminates with `400 UNSUPPORTED_EFFORT_LEVEL` if invalid.
+   - If omitted on a reasoning model, defaults to `capabilities.defaultEffortLevel` (or `'medium'`).
+6. **Eligible Target Filtering & Deterministic Ordering**:
    - Filters targets linked to the resolved version where `status = 'available'` (or `'degraded'` if allowed by policy).
-   - Targets marked `maintenance` or `deprecated` are **strictly excluded**.
+   - Targets marked `maintenance` (cordoned) or `deprecated` are **strictly excluded**.
+   - Multiple provider targets allow transparent failover upon primary target cordoning.
    - If 0 eligible targets remain, terminates with `503 NO_ELIGIBLE_TARGETS`.
    - Sorts deterministically: `priority` ASC (1 before 2), `weight` DESC (100 before 50), and `targetId` ASC.
-6. **Policy & Pricing Attachment**: Attaches `RoutingPolicyConfig`, `ModelLimits`, and `ModelPricing` to the response.
-7. **Delivery & Cache**: Stores resolution response in L1/L2 cache and returns `ModelResolutionResponse`.
+7. **Policy & Pricing Attachment**: Attaches `RoutingPolicyConfig`, `ModelLimits`, `ModelPricing`, and effective `effort` to the response.
+8. **Delivery & Cache**: Stores resolution response in L1/L2 cache (keyed by model, version, tenant, and effort) and returns `ModelResolutionResponse`.
 
 ---
 
@@ -151,13 +155,14 @@ All endpoints are internal, authenticated service endpoints.
 
 ### Query Endpoints
 
-| Method | Path                                            | Description                                                  |
-| ------ | ----------------------------------------------- | ------------------------------------------------------------ |
-| `GET`  | `/healthz`                                      | Liveness probe (`200 OK alive`)                              |
-| `GET`  | `/readyz`                                       | Readiness probe (`200 OK ready` / `503` if DB unreachable)   |
-| `GET`  | `/internal/v1/models/resolve/:canonicalModelId` | Deterministic model resolution for Orchestrator & Gateway    |
-| `GET`  | `/internal/v1/models`                           | List all canonical models (summaries)                        |
-| `GET`  | `/internal/v1/models/:canonicalModelId`         | Detailed view of model, versions, targets, policies, aliases |
+| Method | Path                                            | Description                                                             |
+| ------ | ----------------------------------------------- | ----------------------------------------------------------------------- |
+| `GET`  | `/healthz`                                      | Liveness probe (`200 OK alive`)                                         |
+| `GET`  | `/readyz`                                       | Readiness probe (`200 OK ready` / `503` if DB unreachable)              |
+| `GET`  | `/internal/v1/catalog`                          | Dynamic sanitized model catalog for BILLY (`ModelCatalogEntry[]`)       |
+| `GET`  | `/internal/v1/models/resolve/:canonicalModelId` | Deterministic model resolution for Orchestrator & Gateway (with effort) |
+| `GET`  | `/internal/v1/models`                           | List all canonical models (summaries)                                   |
+| `GET`  | `/internal/v1/models/:canonicalModelId`         | Detailed view of model, versions, targets, policies, aliases            |
 
 ### Administrative Control-Plane Endpoints (Mutations)
 

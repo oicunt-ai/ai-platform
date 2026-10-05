@@ -150,4 +150,119 @@ describe('ModelVersion Domain Entity & Immutability', () => {
       draftVersion.updateSpecifications(baseCapabilities, baseLimits, basePricing, ['text']),
     ).toThrowError(ImmutableVersionViolationError);
   });
+
+  describe('Reasoning effort capabilities validation', () => {
+    it('accepts valid supportedEffortLevels and defaultEffortLevel', () => {
+      const version = new ModelVersion({
+        canonicalModelId: 'oicunt.model.reasoning',
+        version: 'v1.0.0',
+        modalities: ['text'],
+        capabilities: {
+          ...baseCapabilities,
+          reasoning: true,
+          supportedEffortLevels: ['low', 'medium', 'high'],
+          defaultEffortLevel: 'medium',
+        },
+        limits: baseLimits,
+        pricing: basePricing,
+      });
+
+      expect(version.capabilities.supportedEffortLevels).toEqual(['low', 'medium', 'high']);
+      expect(version.capabilities.defaultEffortLevel).toBe('medium');
+    });
+
+    it('preserves existing behavior for models that do not support effort levels', () => {
+      const version = new ModelVersion({
+        canonicalModelId: 'oicunt.model.general',
+        version: 'v1.0.0',
+        modalities: ['text'],
+        capabilities: baseCapabilities,
+        limits: baseLimits,
+        pricing: basePricing,
+      });
+
+      expect(version.capabilities.supportedEffortLevels).toBeUndefined();
+      expect(version.capabilities.defaultEffortLevel).toBeUndefined();
+    });
+
+    it('throws ModelValidationError when supportedEffortLevels is non-empty but defaultEffortLevel is missing', () => {
+      expect(
+        () =>
+          new ModelVersion({
+            canonicalModelId: 'oicunt.model.reasoning',
+            version: 'v1.0.0',
+            modalities: ['text'],
+            capabilities: {
+              ...baseCapabilities,
+              reasoning: true,
+              supportedEffortLevels: ['low', 'high'],
+            },
+            limits: baseLimits,
+            pricing: basePricing,
+          }),
+      ).toThrowError(ModelValidationError);
+    });
+
+    it('throws ModelValidationError when defaultEffortLevel is not in supportedEffortLevels', () => {
+      expect(
+        () =>
+          new ModelVersion({
+            canonicalModelId: 'oicunt.model.reasoning',
+            version: 'v1.0.0',
+            modalities: ['text'],
+            capabilities: {
+              ...baseCapabilities,
+              reasoning: true,
+              supportedEffortLevels: ['low', 'medium'],
+              defaultEffortLevel: 'high',
+            },
+            limits: baseLimits,
+            pricing: basePricing,
+          }),
+      ).toThrowError(ModelValidationError);
+    });
+
+    it('throws ModelValidationError when defaultEffortLevel is provided without supportedEffortLevels', () => {
+      expect(
+        () =>
+          new ModelVersion({
+            canonicalModelId: 'oicunt.model.reasoning',
+            version: 'v1.0.0',
+            modalities: ['text'],
+            capabilities: {
+              ...baseCapabilities,
+              reasoning: true,
+              defaultEffortLevel: 'low',
+            },
+            limits: baseLimits,
+            pricing: basePricing,
+          }),
+      ).toThrowError(ModelValidationError);
+    });
+
+    it('enforces effort level validation on updateSpecifications prior to publishing', () => {
+      const draft = new ModelVersion({
+        canonicalModelId: 'oicunt.model.reasoning',
+        version: 'v1.0.0',
+        modalities: ['text'],
+        capabilities: baseCapabilities,
+        limits: baseLimits,
+        pricing: basePricing,
+        isImmutable: false,
+      });
+
+      expect(() =>
+        draft.updateSpecifications(
+          {
+            ...baseCapabilities,
+            supportedEffortLevels: ['low'],
+            defaultEffortLevel: 'high',
+          },
+          baseLimits,
+          basePricing,
+          ['text'],
+        ),
+      ).toThrowError(ModelValidationError);
+    });
+  });
 });

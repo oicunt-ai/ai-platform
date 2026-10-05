@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { ModelDomainError, type ModelSpec, type TokenUsage } from './index.js';
+import { ModelDomainError, type ModelCatalogEntry, type TokenUsage } from './index.js';
 
 describe('@oicunt-ai/model-types', () => {
   it('instantiates ModelDomainError with code and message', () => {
@@ -21,13 +21,13 @@ describe('@oicunt-ai/model-types', () => {
     expect(usage.promptTokens + usage.completionTokens).toBe(usage.totalTokens);
   });
 
-  it('type checks ModelSpec contract structure', () => {
-    const spec: ModelSpec = {
-      canonicalId: 'oicunt.model.general',
-      provider: 'anthropic',
-      upstreamModelId: 'claude-3-5-sonnet',
-      displayName: 'General Intelligence',
-      description: 'Standard general purpose model',
+  it('type checks ModelCatalogEntry contract structure', () => {
+    const entry: ModelCatalogEntry = {
+      id: 'claude-sonnet',
+      displayName: 'Claude Sonnet',
+      description: 'Frontier reasoning and coding model',
+      family: 'claude',
+      activeVersion: 'v1.0.0',
       modalities: ['text', 'image'],
       capabilities: {
         streaming: true,
@@ -38,6 +38,8 @@ describe('@oicunt-ai/model-types', () => {
         audioInput: false,
         audioOutput: false,
         systemInstructions: true,
+        supportedEffortLevels: ['low', 'medium', 'high'],
+        defaultEffortLevel: 'medium',
       },
       limits: {
         contextWindowTokens: 200_000,
@@ -47,9 +49,12 @@ describe('@oicunt-ai/model-types', () => {
         costPerMillionInputTokens: 3.0,
         costPerMillionOutputTokens: 15.0,
       },
-      defaultTemperature: 0.7,
+      status: 'available',
+      isSelectable: true,
     };
-    expect(spec.canonicalId).toBe('oicunt.model.general');
-    expect(spec.capabilities.streaming).toBe(true);
+    expect(entry.id).toBe('claude-sonnet');
+    expect(entry.capabilities.reasoning).toBe(true);
+    expect(entry.capabilities.defaultEffortLevel).toBe('medium');
+    expect(entry.isSelectable).toBe(true);
   });
 });

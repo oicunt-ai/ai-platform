@@ -11,7 +11,7 @@ Foundational model domain types, capabilities, token usage metrics, and canonica
 - Model modalities and capability flags (`ModelCapabilities`)
 - Token usage accounting (`TokenUsage`)
 - Model invocation parameters (`ModelInvocationParameters`)
-- Catalog specifications and limits (`ModelSpec`, `ModelLimits`, `ModelPricing`)
+- Catalog specifications and limits (`ModelCatalogEntry`, `ModelLimits`, `ModelPricing`)
 
 ## Boundary Invariants
 

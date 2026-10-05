@@ -1,6 +1,7 @@
 import type {
   CanonicalModelId,
   ModelCapabilities,
+  ModelCatalogEntry,
   ModelLimits,
   ModelModality,
   ModelPricing,
@@ -20,6 +21,7 @@ export interface CreateCanonicalModelDto {
   readonly id: CanonicalModelId;
   readonly displayName: string;
   readonly description: string;
+  readonly family?: string | undefined;
   readonly activeVersion: string;
   readonly actorId: string;
   readonly correlationId: string;
@@ -101,6 +103,7 @@ export interface CanonicalModelSummaryDto {
   readonly id: CanonicalModelId;
   readonly displayName: string;
   readonly description: string;
+  readonly family?: string | undefined;
   readonly activeVersion: string;
   readonly versionsCount: number;
   readonly targetsCount: number;
@@ -110,6 +113,7 @@ export interface CanonicalModelDetailDto {
   readonly id: CanonicalModelId;
   readonly displayName: string;
   readonly description: string;
+  readonly family?: string | undefined;
   readonly activeVersion: string;
   readonly versionLock: number;
   readonly versions: readonly ModelVersionData[];
@@ -119,3 +123,8 @@ export interface CanonicalModelDetailDto {
   readonly createdAt: string;
   readonly updatedAt: string;
 }
+
+/**
+ * User-facing model catalog item exposed to BILLY and client selectors.
+ */
+export type ModelCatalogEntryDto = ModelCatalogEntry;

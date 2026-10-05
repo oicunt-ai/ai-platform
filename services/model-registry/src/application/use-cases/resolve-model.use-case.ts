@@ -10,9 +10,10 @@ import {
   ModelInMaintenanceError,
   ModelNotFoundError,
   ModelValidationError,
+  UnsupportedEffortError,
 } from '../../domain/index.js';
 
-const CANONICAL_MODEL_ID_REGEX = /^oicunt\.model\.[a-z0-9-]+$/;
+const CANONICAL_MODEL_ID_REGEX = /^[a-z0-9][a-z0-9._-]{1,63}$/;
 
 export interface ResolveModelUseCaseOptions {
   readonly defaultCacheTtlSeconds?: number | undefined;
@@ -39,7 +40,7 @@ export class ResolveModelUseCase {
       !CANONICAL_MODEL_ID_REGEX.test(request.canonicalModelId)
     ) {
       throw new ModelValidationError(
-        `Invalid canonical model ID '${request.canonicalModelId}'. Must match format '^oicunt\\.model\\.[a-z0-9\\-]+$'`,
+        `Invalid canonical model ID '${request.canonicalModelId}'. Must match format '^[a-z0-9][a-z0-9._-]{1,63}$' (e.g. 'claude-sonnet', 'gpt-4o', 'gemini-pro')`,
         'canonicalModelId',
       );
     }
@@ -50,8 +51,9 @@ export class ResolveModelUseCase {
 
     // Cache lookup key
     const versionKey = request.version?.trim() || 'active';
+    const effortKey = request.effort?.trim() || 'default';
     const tenantKey = request.tenantId?.trim() || 'global';
-    const cacheKey = `${request.canonicalModelId}:${versionKey}:${tenantKey}`;
+    const cacheKey = `${request.canonicalModelId}:${versionKey}:${effortKey}:${tenantKey}`;
 
     const cached = await this.cache.getResolution(cacheKey);
     if (cached) {
@@ -82,6 +84,27 @@ export class ResolveModelUseCase {
     }
 
     // -------------------------------------------------------------
+    // STEP 4.5: Effort Capability Validation
+    // -------------------------------------------------------------
+    let effectiveEffort = request.effort;
+    if (request.effort) {
+      const supported = resolvedVersion.capabilities.supportedEffortLevels ?? [];
+      if (!resolvedVersion.capabilities.reasoning || !supported.includes(request.effort)) {
+        throw new UnsupportedEffortError(
+          model.id,
+          resolvedVersion.version,
+          request.effort,
+          supported,
+        );
+      }
+    } else if (
+      resolvedVersion.capabilities.reasoning &&
+      resolvedVersion.capabilities.defaultEffortLevel
+    ) {
+      effectiveEffort = resolvedVersion.capabilities.defaultEffortLevel;
+    }
+
+    // -------------------------------------------------------------
     // STEP 5: Eligible Target Filtering & Deterministic Ordering
     // -------------------------------------------------------------
     const allowDegraded = model.routingPolicy.strategy !== 'lowest-latency';
@@ -107,11 +130,13 @@ export class ResolveModelUseCase {
       version: resolvedVersion.version,
       displayName: model.displayName,
       description: model.description,
+      family: model.family,
       modalities: resolvedVersion.modalities,
       capabilities: resolvedVersion.capabilities,
       limits: resolvedVersion.limits,
       pricing: resolvedVersion.pricing,
       status: resolvedVersion.status,
+      effort: effectiveEffort,
       eligibleTargets: Object.freeze(resolvedTargets),
       routingPolicy: {
         strategy: model.routingPolicy.strategy,

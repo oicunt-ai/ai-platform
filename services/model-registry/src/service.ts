@@ -14,6 +14,7 @@ import {
   CreateCanonicalModelUseCase,
   CreateModelTargetUseCase,
   CreateModelVersionUseCase,
+  GetModelCatalogUseCase,
   GetModelUseCase,
   ListModelsUseCase,
   ResolveModelUseCase,
@@ -156,10 +157,12 @@ export class ModelRegistryService {
       this.cache,
     );
 
+    const getModelCatalogUseCase = new GetModelCatalogUseCase(this.modelRepository);
     const resolutionController = new ResolutionController(resolveModelUseCase);
     const catalogController = new CatalogController({
       getModelUseCase,
       listModelsUseCase,
+      getModelCatalogUseCase,
       createCanonicalModelUseCase,
       createModelVersionUseCase,
       updateModelVersionStatusUseCase,

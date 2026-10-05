@@ -43,6 +43,7 @@ export class ModelVersion {
     this.validateLimits(params.limits);
     this.validatePricing(params.pricing);
     this.validateModalities(params.modalities);
+    this.validateCapabilities(params.capabilities);
 
     this.id = params.id ?? randomUUID();
     this.canonicalModelId = params.canonicalModelId;
@@ -113,6 +114,7 @@ export class ModelVersion {
     this.validateLimits(limits);
     this.validatePricing(pricing);
     this.validateModalities(modalities);
+    this.validateCapabilities(capabilities);
 
     this._capabilities = Object.freeze({ ...capabilities });
     this._limits = Object.freeze({ ...limits });
@@ -204,6 +206,62 @@ export class ModelVersion {
         'At least one modality must be defined for a model version',
         'modalities',
       );
+    }
+  }
+
+  private validateCapabilities(capabilities: ModelCapabilities): void {
+    if (!capabilities || typeof capabilities !== 'object') {
+      throw new ModelValidationError('Model capabilities must be provided', 'capabilities');
+    }
+
+    const supportedLevels = capabilities.supportedEffortLevels;
+    const defaultLevel = capabilities.defaultEffortLevel;
+
+    if (supportedLevels !== undefined) {
+      if (!Array.isArray(supportedLevels)) {
+        throw new ModelValidationError(
+          'supportedEffortLevels must be an array',
+          'capabilities.supportedEffortLevels',
+        );
+      }
+      for (const level of supportedLevels) {
+        if (typeof level !== 'string' || level.trim().length === 0) {
+          throw new ModelValidationError(
+            `Invalid effort level '${String(level)}'. Must be non-empty string`,
+            'capabilities.supportedEffortLevels',
+          );
+        }
+      }
+
+      if (supportedLevels.length > 0) {
+        if (typeof defaultLevel !== 'string' || defaultLevel.trim().length === 0) {
+          throw new ModelValidationError(
+            'defaultEffortLevel is required when supportedEffortLevels is non-empty',
+            'capabilities.defaultEffortLevel',
+          );
+        }
+        if (!supportedLevels.includes(defaultLevel)) {
+          throw new ModelValidationError(
+            `defaultEffortLevel '${defaultLevel}' must be included in supportedEffortLevels`,
+            'capabilities.defaultEffortLevel',
+          );
+        }
+      }
+    }
+
+    if (defaultLevel !== undefined) {
+      if (typeof defaultLevel !== 'string' || defaultLevel.trim().length === 0) {
+        throw new ModelValidationError(
+          'defaultEffortLevel must be a non-empty string',
+          'capabilities.defaultEffortLevel',
+        );
+      }
+      if (!supportedLevels || supportedLevels.length === 0) {
+        throw new ModelValidationError(
+          'defaultEffortLevel cannot be specified without supportedEffortLevels',
+          'capabilities.defaultEffortLevel',
+        );
+      }
     }
   }
 }

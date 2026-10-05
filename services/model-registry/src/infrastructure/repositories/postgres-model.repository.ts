@@ -14,6 +14,7 @@ interface CanonicalModelRow {
   id: string;
   display_name: string;
   description: string;
+  family?: string | null;
   active_version: string;
   version_lock: number;
   created_at: Date;
@@ -187,6 +188,7 @@ export class PostgresModelRepository implements ModelRepositoryPort {
       id: modelRow.id as CanonicalModelId,
       displayName: modelRow.display_name,
       description: modelRow.description,
+      family: modelRow.family ?? undefined,
       activeVersion: modelRow.active_version,
       versionLock: modelRow.version_lock,
       versions: versionEntities,
@@ -345,6 +347,7 @@ export class PostgresModelRepository implements ModelRepositoryPort {
           id: mRow.id as CanonicalModelId,
           displayName: mRow.display_name,
           description: mRow.description,
+          family: mRow.family ?? undefined,
           activeVersion: mRow.active_version,
           versionLock: mRow.version_lock,
           versions,
@@ -379,15 +382,23 @@ export class PostgresModelRepository implements ModelRepositoryPort {
 
       // 2. Upsert Canonical Model
       await client.query(
-        `INSERT INTO model_registry.canonical_models (id, display_name, description, active_version, version_lock, updated_at)
-         VALUES ($1, $2, $3, $4, $5, NOW())
+        `INSERT INTO model_registry.canonical_models (id, display_name, description, family, active_version, version_lock, updated_at)
+         VALUES ($1, $2, $3, $4, $5, $6, NOW())
          ON CONFLICT (id) DO UPDATE SET
             display_name = EXCLUDED.display_name,
             description = EXCLUDED.description,
+            family = EXCLUDED.family,
             active_version = EXCLUDED.active_version,
             version_lock = EXCLUDED.version_lock,
             updated_at = NOW()`,
-        [model.id, model.displayName, model.description, model.activeVersion, model.versionLock],
+        [
+          model.id,
+          model.displayName,
+          model.description,
+          model.family ?? null,
+          model.activeVersion,
+          model.versionLock,
+        ],
       );
 
       // 3. Upsert Versions & Prune Removed (Orphaned) Versions

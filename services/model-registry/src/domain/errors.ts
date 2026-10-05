@@ -106,3 +106,21 @@ export class OptimisticLockError extends ModelDomainError {
     );
   }
 }
+
+export class UnsupportedEffortError extends ModelDomainError {
+  constructor(
+    public readonly canonicalModelId: string,
+    public readonly version: string,
+    public readonly effort: string,
+    public readonly supportedLevels: readonly string[],
+  ) {
+    const supportedStr =
+      supportedLevels.length > 0
+        ? `Supported levels: [${supportedLevels.join(', ')}]`
+        : 'Model does not support reasoning effort configuration';
+    super(
+      'UNSUPPORTED_EFFORT_LEVEL',
+      `Model '${canonicalModelId}' version '${version}' does not support reasoning effort level '${effort}'. ${supportedStr}`,
+    );
+  }
+}

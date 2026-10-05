@@ -44,12 +44,14 @@ describe('Real PostgreSQL Integration Test Suite', () => {
     // Run migrations first time
     const result1 = await migrator.runMigrations();
     expect(result1.applied).toContain('001_initial_schema.sql');
+    expect(result1.applied).toContain('002_add_model_family.sql');
     expect(result1.alreadyApplied).toHaveLength(0);
 
     // Run migrations second time (idempotency check)
     const result2 = await migrator.runMigrations();
     expect(result2.applied).toHaveLength(0);
     expect(result2.alreadyApplied).toContain('001_initial_schema.sql');
+    expect(result2.alreadyApplied).toContain('002_add_model_family.sql');
 
     // Verify tables exist in PostgreSQL information_schema
     const tablesRes = await instance.pool.query<{ table_name: string }>(
@@ -72,6 +74,7 @@ describe('Real PostgreSQL Integration Test Suite', () => {
       id: 'oicunt.model.general',
       displayName: 'General Intelligence',
       description: 'Conversational frontier model',
+      family: 'anthropic',
       activeVersion: 'v1.0.0',
     });
 
@@ -84,7 +87,9 @@ describe('Real PostgreSQL Integration Test Suite', () => {
         streaming: true,
         toolCalling: true,
         structuredOutputs: true,
-        reasoning: false,
+        reasoning: true,
+        supportedEffortLevels: ['low', 'medium', 'high'],
+        defaultEffortLevel: 'medium',
         vision: true,
         audioInput: false,
         audioOutput: false,
@@ -132,7 +137,15 @@ describe('Real PostgreSQL Integration Test Suite', () => {
     expect(retrieved).not.toBeNull();
     expect(retrieved?.id).toBe('oicunt.model.general');
     expect(retrieved?.displayName).toBe('General Intelligence');
+    expect(retrieved?.family).toBe('anthropic');
     expect(retrieved?.getVersions()).toHaveLength(1);
+    expect(retrieved?.getVersions()[0]?.capabilities.reasoning).toBe(true);
+    expect(retrieved?.getVersions()[0]?.capabilities.supportedEffortLevels).toEqual([
+      'low',
+      'medium',
+      'high',
+    ]);
+    expect(retrieved?.getVersions()[0]?.capabilities.defaultEffortLevel).toBe('medium');
     expect(retrieved?.getTargets()).toHaveLength(1);
     expect(retrieved?.getTarget('target-anthropic-us')?.provider).toBe('anthropic');
     expect(retrieved?.routingPolicy.strategy).toBe('priority-fallback');

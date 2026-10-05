@@ -163,10 +163,13 @@ graph TD
 - **Zero Leakage**: Vendor SDK types, raw parameter names (`max_tokens_to_sample`, `temperature`, `system`), and vendor error codes must never escape `providers/`.
 - **Bidirectional Translation**: Inbound requests map from `@oicunt-ai/ai-types` to vendor requests; outbound responses map to `NormalizedCompletionData` or `StreamEvent` SSE streams.
 
-### 4.5 Canonical Model Abstraction
+### 4.5 Canonical Model Abstraction & Dynamic Catalog Discovery
 
-- **Platform Identifiers**: Public requests and internal service-to-service calls specify canonical OICUNT identifiers (`oicunt.model.general`, `oicunt.model.reasoning`, `oicunt.model.embedding`), never raw vendor model names (`claude-3-5-sonnet`, `gpt-4o`).
-- **Catalog Management**: The Model Registry resolves canonical identifiers into concrete provider targets, execution limits, and pricing metadata.
+- **Platform Identifiers**: Public requests and internal service-to-service calls specify canonical OICUNT identifiers (e.g. `claude-sonnet`, `claude-opus`, `gpt-4o`, `gemini-pro`, as well as namespaced identifiers like `oicunt.model.general`), never raw vendor model names (`claude-3-5-sonnet-20241022`, `gpt-4o-2024-08-06`).
+- **Dynamic Model Catalog**: The Model Registry exposes `GET /internal/v1/catalog` returning sanitized model entries (`ModelCatalogEntry[]`) for BILLY and client model pickers without leaking internal provider endpoints or secrets.
+- **Reasoning Effort Governance**: Reasoning effort (`low`, `medium`, `high`) is a model capability and request parameter, NOT a separate model identifier. The Model Registry dynamically validates effort parameters against declared model capabilities (`capabilities.supportedEffortLevels`).
+- **Transparent Provider Replacement**: Model versions map to one or more internal provider targets with priority and weights. Provider outages or maintenance cordoning trigger transparent failover without altering the user-selected model or requiring client redesign.
+- **Separation of What vs. How**: Model Registry resolves WHAT targets are eligible; Model Gateway determines HOW to execute against those targets.
 
 ### 4.6 AI Request/Response Normalization
 
@@ -259,9 +262,9 @@ Each service and package maintains three testing tiers:
 
 ### 4.20 Model & Provider Separation
 
-- **Model Registry (Catalog)**: Owns canonical model definitions, capability flags, pricing tables, and default parameters.
-- **Model Gateway (Egress)**: Owns provider routing, retry budgets, circuit breakers, and streaming normalization.
-- **Clean Decoupling**: The Orchestrator knows only about canonical models; only the Model Gateway knows how to dispatch to providers.
+- **Model Registry (Catalog & Resolution)**: Owns canonical model definitions, dynamic catalog discovery (`GET /internal/v1/catalog`), capability flags (including reasoning effort levels), pricing tables, and eligible target bindings.
+- **Model Gateway (Egress & Execution)**: Owns provider routing, retry budgets, circuit breakers, adapter dispatch, and streaming normalization.
+- **Clean Decoupling**: Consuming clients (BILLY) select from user-facing canonical models and effort levels; the Orchestrator knows only about canonical models; only the Model Gateway knows how to dispatch to upstream provider targets.
 - **Detailed Specification**: See the authoritative architecture contracts in [Model Routing Contract](./contracts/model-routing.md) and [Model Registry Implementation Contract](./contracts/model-registry.md) for complete resolution schemas, domain aggregates, database ownership, dispatch contracts, and failure handling mechanics.
 
 ---
@@ -286,18 +289,18 @@ services/
 
 ### Detailed Service Responsibilities
 
-| Service          | Responsibility                                                                                                                                                                                 | Inbound Ports (Interfaces)          | Outbound Ports (Dependencies)                    |
-| ---------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------ |
-| `orchestrator`   | Coordinates conversational turns, prompt assembly, and iterative tool loops. Does not contain provider-specific code.                                                                          | HTTP turn endpoint, Event consumers | Model Gateway, Model Registry, Tools, Memory     |
-| `model-gateway`  | The singular provider egress boundary. Normalizes payloads, manages provider fallbacks, enforces rate limits, handles SSE streams.                                                             | HTTP completion & stream dispatch   | Provider Adapters (`providers/*`), Observability |
-| `model-registry` | Canonical model catalog. Maintains canonical IDs (`oicunt.model.*`), provider target mappings, context limits, and cost tables (see [Model Registry Contract](./contracts/model-registry.md)). | HTTP catalog & resolution query     | Database / Configuration store                   |
-| `inference`      | Routes dedicated inference jobs to self-hosted or private model endpoints with priority queuing.                                                                                               | HTTP / gRPC inference request       | Internal model execution runtimes                |
-| `memory`         | Manages conversation memory windows, token summarization, and agent episodic memory state.                                                                                                     | HTTP memory query & update          | Dedicated memory storage adapter                 |
-| `knowledge`      | Orchestrates semantic search across enterprise document indices for retrieval-augmented generation.                                                                                            | HTTP retrieval query                | Embeddings, Vector index storage                 |
-| `embeddings`     | Synchronous endpoint for text and multimodal vector embedding generation.                                                                                                                      | HTTP embedding generation           | Model Gateway / Inference runtime                |
-| `tools`          | Sandboxed execution environment for deterministic tools and platform actions.                                                                                                                  | HTTP tool invocation                | Sandboxed container runtime                      |
-| `agents`         | Durable execution engine for multi-step autonomous agents, step state checkpoints, and pause/resume loops.                                                                                     | HTTP agent run trigger, Job queue   | Orchestrator, Tools, Memory, Storage             |
-| `mcp`            | Model Context Protocol gateway connecting external tool and resource servers into the AI platform.                                                                                             | MCP stdio/SSE/WebSocket bridges     | Tool runtime, Platform resources                 |
+| Service          | Responsibility                                                                                                                                                                                                            | Inbound Ports (Interfaces)          | Outbound Ports (Dependencies)                    |
+| ---------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ----------------------------------- | ------------------------------------------------ |
+| `orchestrator`   | Coordinates conversational turns, prompt assembly, and iterative tool loops. Does not contain provider-specific code.                                                                                                     | HTTP turn endpoint, Event consumers | Model Gateway, Model Registry, Tools, Memory     |
+| `model-gateway`  | The singular provider egress boundary. Normalizes payloads, manages provider fallbacks, enforces rate limits, handles SSE streams.                                                                                        | HTTP completion & stream dispatch   | Provider Adapters (`providers/*`), Observability |
+| `model-registry` | Canonical model catalog. Maintains canonical IDs (`claude-sonnet`, `gpt-4o`, `oicunt.model.*`), provider target mappings, context limits, and cost tables (see [Model Registry Contract](./contracts/model-registry.md)). | HTTP catalog & resolution query     | Database / Configuration store                   |
+| `inference`      | Routes dedicated inference jobs to self-hosted or private model endpoints with priority queuing.                                                                                                                          | HTTP / gRPC inference request       | Internal model execution runtimes                |
+| `memory`         | Manages conversation memory windows, token summarization, and agent episodic memory state.                                                                                                                                | HTTP memory query & update          | Dedicated memory storage adapter                 |
+| `knowledge`      | Orchestrates semantic search across enterprise document indices for retrieval-augmented generation.                                                                                                                       | HTTP retrieval query                | Embeddings, Vector index storage                 |
+| `embeddings`     | Synchronous endpoint for text and multimodal vector embedding generation.                                                                                                                                                 | HTTP embedding generation           | Model Gateway / Inference runtime                |
+| `tools`          | Sandboxed execution environment for deterministic tools and platform actions.                                                                                                                                             | HTTP tool invocation                | Sandboxed container runtime                      |
+| `agents`         | Durable execution engine for multi-step autonomous agents, step state checkpoints, and pause/resume loops.                                                                                                                | HTTP agent run trigger, Job queue   | Orchestrator, Tools, Memory, Storage             |
+| `mcp`            | Model Context Protocol gateway connecting external tool and resource servers into the AI platform.                                                                                                                        | MCP stdio/SSE/WebSocket bridges     | Tool runtime, Platform resources                 |
 
 ---
 
@@ -355,10 +358,12 @@ Every future implementation must satisfy the following invariants:
 
 - [ ] AI services must never expose provider-specific APIs outside `providers/`.
 - [ ] Provider SDKs must not leak into shared packages or orchestrators.
-- [ ] AI services consume canonical OICUNT model identifiers (`oicunt.model.*`).
+- [ ] AI services consume canonical OICUNT model identifiers (`claude-sonnet`, `gpt-4o`, `oicunt.model.*`).
 - [ ] Provider-specific model IDs remain internal to provider configuration.
 - [ ] Model Gateway is the singular provider egress boundary.
 - [ ] Model Registry is the singular model catalog and routing configuration boundary.
+- [ ] Dynamic model catalog discovery (`GET /internal/v1/catalog`) decouples client model selection from provider endpoints.
+- [ ] Reasoning effort levels are dynamic capabilities and execution parameters, not distinct model entities.
 - [ ] Orchestrator coordinates AI workflows but contains zero provider-specific code.
 - [ ] Shared packages must not depend on services, workers, or providers.
 - [ ] Services must own their persistent data (no shared databases).
