@@ -154,7 +154,7 @@ graph TD
 ### 4.3 AI-Specific Dependency Rules
 
 - **Acyclic Dependency Graph**: Services must never establish cyclic dependencies.
-- **Hierarchical Invocation**: Client requests flow: `API Gateway` &rarr; `Orchestrator` &rarr; `Model Gateway` &rarr; `Provider Adapter`.
+- **Hierarchical Invocation**: Client requests flow: `API Gateway` &rarr; `Orchestrator` &rarr; `Inference` &rarr; `Model Gateway` &rarr; `Provider Adapter`.
 - **No Direct Vendor Leaks**: Upstream provider SDKs (Anthropic, OpenAI, Google) are strictly forbidden from being imported by any service other than provider adapters inside `providers/`.
 
 ### 4.4 Provider Adapter Isolation
@@ -294,7 +294,7 @@ services/
 | `orchestrator`   | Coordinates conversational turns, prompt assembly, and iterative tool loops. Does not contain provider-specific code (see [AI Orchestrator Contract](./contracts/ai-orchestrator.md)).                                    | HTTP turn endpoint, Event consumers | Model Gateway, Model Registry, Tools, Memory     |
 | `model-gateway`  | The singular provider egress boundary. Normalizes payloads, manages provider fallbacks, enforces rate limits, handles SSE streams (see [Model Gateway Contract](./contracts/model-gateway.md)).                           | HTTP completion & stream dispatch   | Provider Adapters (`providers/*`), Observability |
 | `model-registry` | Canonical model catalog. Maintains canonical IDs (`claude-sonnet`, `gpt-4o`, `oicunt.model.*`), provider target mappings, context limits, and cost tables (see [Model Registry Contract](./contracts/model-registry.md)). | HTTP catalog & resolution query     | Database / Configuration store                   |
-| `inference`      | Routes dedicated inference jobs to self-hosted or private model endpoints with priority queuing.                                                                                                                          | HTTP / gRPC inference request       | Internal model execution runtimes                |
+| `inference`      | Coordinates inference execution lifecycle, normalized request/response boundaries, deadline/cancellation propagation, and streaming (see [Inference Service Contract](./contracts/inference.md)).                         | HTTP inference request              | Model Gateway, Internal runtimes                 |
 | `memory`         | Manages conversation memory windows, token summarization, and agent episodic memory state.                                                                                                                                | HTTP memory query & update          | Dedicated memory storage adapter                 |
 | `knowledge`      | Orchestrates semantic search across enterprise document indices for retrieval-augmented generation.                                                                                                                       | HTTP retrieval query                | Embeddings, Vector index storage                 |
 | `embeddings`     | Synchronous endpoint for text and multimodal vector embedding generation.                                                                                                                                                 | HTTP embedding generation           | Model Gateway / Inference runtime                |

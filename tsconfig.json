@@ -11,6 +11,7 @@
     { "path": "./templates/service" },
     { "path": "./services/model-registry" },
     { "path": "./services/model-gateway" },
-    { "path": "./services/ai-orchestrator" }
+    { "path": "./services/ai-orchestrator" },
+    { "path": "./services/inference" }
   ]
 }

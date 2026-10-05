@@ -240,6 +240,18 @@ importers:
         specifier: workspace:*
         version: link:../../packages/observability
 
+  services/inference:
+    dependencies:
+      '@oicunt-ai/ai-types':
+        specifier: workspace:*
+        version: link:../../packages/ai-types
+      '@oicunt-ai/model-types':
+        specifier: workspace:*
+        version: link:../../packages/model-types
+      '@oicunt-ai/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+
   services/model-gateway:
     dependencies:
       '@oicunt-ai/ai-types':
