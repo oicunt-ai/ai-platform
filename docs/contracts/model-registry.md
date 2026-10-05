@@ -13,7 +13,7 @@ The **Model Registry** (`services/model-registry`) is the singular, authoritativ
 It serves two primary operational roles:
 
 1. **Dynamic Model Catalog Provider for Client Applications (Model Selection)**: Exposes a user-facing, sanitized model catalog (`GET /internal/v1/catalog`) consumed by BILLY and client orchestrators to render dynamic model pickers (e.g. Claude Sonnet, Claude Opus, GPT-4o, Gemini Pro) and dynamic reasoning effort selectors (`low`, `medium`, `high`).
-2. **Deterministic Model Resolution Authority (Model Resolution)**: Deterministically resolves user-selected canonical models and optional effort levels into concrete, eligible execution targets, token limits, and routing policies consumed by the **AI Orchestrator** and executed by the **Model Gateway**.
+2. **Deterministic Model Resolution Authority (Model Resolution)**: Deterministically resolves user-selected canonical models and optional effort levels into concrete, eligible execution targets, token limits, and routing policies consumed by the **AI Orchestrator** and executed by the **Model Gateway** (see [Model Gateway Contract](./model-gateway.md)).
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐

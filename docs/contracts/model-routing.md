@@ -12,6 +12,11 @@ This document establishes the formal, binding architectural contract between the
 
 It defines the end-to-end routing lifecycle, taxonomy, dynamic catalog discovery, model resolution schemas, dispatch payloads, resilience mechanics, security boundaries, and telemetry requirements for all AI model inference across the **OICUNT AI Platform**.
 
+For specialized service-level implementation specifications, see:
+
+- [Model Registry Implementation Contract](./model-registry.md)
+- [Model Gateway Architecture Contract](./model-gateway.md)
+
 ### 1.1 Canonical Request Flow
 
 The canonical request path flows sequentially across six distinct architectural boundaries:
