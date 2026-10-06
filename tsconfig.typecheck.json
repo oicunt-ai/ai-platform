@@ -19,7 +19,8 @@
       "@oicunt-ai/service-inference": ["./services/inference/src/index.ts"],
       "@oicunt-ai/service-memory": ["./services/memory/src/index.ts"],
       "@oicunt-ai/service-knowledge": ["./services/knowledge/src/index.ts"],
-      "@oicunt-ai/service-embeddings": ["./services/embeddings/src/index.ts"]
+      "@oicunt-ai/service-embeddings": ["./services/embeddings/src/index.ts"],
+      "@oicunt-ai/service-tools": ["./services/tools/src/index.ts"]
     }
   },
   "include": [

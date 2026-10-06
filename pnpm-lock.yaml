@@ -327,6 +327,25 @@ importers:
         specifier: ^8.11.10
         version: 8.23.1
 
+  services/tools:
+    dependencies:
+      '@oicunt-ai/ai-types':
+        specifier: workspace:*
+        version: link:../../packages/ai-types
+      '@oicunt-ai/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@oicunt-ai/tool-types':
+        specifier: workspace:*
+        version: link:../../packages/tool-types
+      pg:
+        specifier: ^8.13.1
+        version: 8.23.1
+    devDependencies:
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.23.1
+
   templates/service:
     dependencies:
       '@oicunt-ai/ai-types':

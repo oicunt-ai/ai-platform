@@ -27,6 +27,11 @@ export default defineConfig({
         import.meta.dirname,
         'services/knowledge/src/index.ts',
       ),
+      '@oicunt-ai/service-embeddings': resolve(
+        import.meta.dirname,
+        'services/embeddings/src/index.ts',
+      ),
+      '@oicunt-ai/service-tools': resolve(import.meta.dirname, 'services/tools/src/index.ts'),
     },
   },
   test: {

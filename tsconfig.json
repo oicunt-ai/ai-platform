@@ -15,6 +15,7 @@
     { "path": "./services/inference" },
     { "path": "./services/memory" },
     { "path": "./services/knowledge" },
-    { "path": "./services/embeddings" }
+    { "path": "./services/embeddings" },
+    { "path": "./services/tools" }
   ]
 }
