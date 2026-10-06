@@ -1,0 +1,17 @@
+{
+  "extends": "../../tsconfig.base.json",
+  "compilerOptions": {
+    "rootDir": "src",
+    "outDir": "dist"
+  },
+  "references": [
+    { "path": "../../packages/model-types" },
+    { "path": "../../packages/ai-types" },
+    { "path": "../../packages/tool-types" },
+    { "path": "../../packages/agent-types" },
+    { "path": "../../packages/observability" },
+    { "path": "../../services/agents" }
+  ],
+  "include": ["src/**/*"],
+  "exclude": ["src/**/*.test.ts"]
+}

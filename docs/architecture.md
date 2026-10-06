@@ -286,7 +286,7 @@ services/
 ├── knowledge/          # Knowledge spaces/collections, document processing, chunking, and similarity retrieval (see docs/contracts/knowledge.md)
 ├── embeddings/         # High-throughput vector embedding generation endpoint (see docs/contracts/embeddings.md)
 ├── tools/              # Centralized tool execution engine, sandboxing, permission checks (see docs/contracts/tools.md)
-├── agents/             # Autonomous agent state machine, persistent run loops, step execution
+├── agents/             # Autonomous agent state machine, persistent run loops, step execution (see docs/contracts/agents.md)
 └── mcp/                # Model Context Protocol bridge and server connectors
 ```
 
@@ -302,7 +302,7 @@ services/
 | `knowledge`      | Owns user/tenant collections, document lifecycle, chunking, abstract embeddings, vector similarity search, and provenance (see [Knowledge Service Contract](./contracts/knowledge.md)).                                   | HTTP retrieval and document API (`/internal/v1/knowledge/*`)       | DocumentRepositoryPort, VectorStorePort, EmbeddingServicePort, ObjectStoragePort |
 | `embeddings`     | Authoritative provider-neutral vector embedding generation layer. Enforces batch atomicity, dimension validation, and dispatches egress via Model Gateway (see [Embeddings Service Contract](./contracts/embeddings.md)). | HTTP embedding generation (`/internal/v1/embeddings/embed`)        | Model Registry, Model Gateway                                                    |
 | `tools`          | Canonical tool catalog, execution engine, sandboxing, permission checks, and capability governance (see [Tools Service Contract](./contracts/tools.md)).                                                                  | HTTP discovery, execution, & registration (`/internal/v1/tools/*`) | Sandboxed runtimes, OICUNT services, external APIs, MCP bridge                   |
-| `agents`         | Durable execution engine for multi-step autonomous agents, step state checkpoints, and pause/resume loops.                                                                                                                | HTTP agent run trigger, Job queue                                  | Orchestrator, Tools, Memory, Storage                                             |
+| `agents`         | Durable execution engine for multi-step autonomous agents, step state checkpoints, and pause/resume loops (see [Agents Service Contract](./contracts/agents.md)).                                                         | HTTP agent run trigger, Job queue (`/internal/v1/agents/*`)        | Inference, Tools, Knowledge, Database, MessageBroker                             |
 | `mcp`            | Model Context Protocol gateway connecting external tool and resource servers into the AI platform.                                                                                                                        | MCP stdio/SSE/WebSocket bridges                                    | Tool runtime, Platform resources                                                 |
 
 ---

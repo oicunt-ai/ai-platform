@@ -1023,6 +1023,7 @@ While the initial implementation focuses on conversational chat orchestration, t
 ### 22.4 Autonomous Multi-Step Agents (`services/agents`)
 
 - **Port**: `AgentCoordinationPort`
+- **Specification**: [`docs/contracts/agents.md`](./agents.md)
 - **Future Integration**: Supports long-running, multi-step agent runs, step checkpoints, and human-in-the-loop approvals.
 
 ### 22.5 Model Context Protocol Bridge (`services/mcp`)

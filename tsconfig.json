@@ -16,6 +16,8 @@
     { "path": "./services/memory" },
     { "path": "./services/knowledge" },
     { "path": "./services/embeddings" },
-    { "path": "./services/tools" }
+    { "path": "./services/tools" },
+    { "path": "./services/agents" },
+    { "path": "./workers/agent-jobs" }
   ]
 }

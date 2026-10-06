@@ -20,7 +20,9 @@
       "@oicunt-ai/service-memory": ["./services/memory/src/index.ts"],
       "@oicunt-ai/service-knowledge": ["./services/knowledge/src/index.ts"],
       "@oicunt-ai/service-embeddings": ["./services/embeddings/src/index.ts"],
-      "@oicunt-ai/service-tools": ["./services/tools/src/index.ts"]
+      "@oicunt-ai/service-tools": ["./services/tools/src/index.ts"],
+      "@oicunt-ai/service-agents": ["./services/agents/src/index.ts"],
+      "@oicunt-ai/worker-agent-jobs": ["./workers/agent-jobs/src/index.ts"]
     }
   },
   "include": [
@@ -29,6 +31,8 @@
     "templates/*/src/**/*.ts",
     "templates/*/tests/**/*.ts",
     "services/*/src/**/*.ts",
-    "services/*/tests/**/*.ts"
+    "services/*/tests/**/*.ts",
+    "workers/*/src/**/*.ts",
+    "workers/*/tests/**/*.ts"
   ]
 }

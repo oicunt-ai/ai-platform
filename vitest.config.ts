@@ -32,6 +32,11 @@ export default defineConfig({
         'services/embeddings/src/index.ts',
       ),
       '@oicunt-ai/service-tools': resolve(import.meta.dirname, 'services/tools/src/index.ts'),
+      '@oicunt-ai/service-agents': resolve(import.meta.dirname, 'services/agents/src/index.ts'),
+      '@oicunt-ai/worker-agent-jobs': resolve(
+        import.meta.dirname,
+        'workers/agent-jobs/src/index.ts',
+      ),
     },
   },
   test: {
@@ -42,6 +47,7 @@ export default defineConfig({
       'tests/**/*.test.ts',
       'templates/*/tests/**/*.test.ts',
       'services/*/tests/**/*.test.ts',
+      'workers/*/tests/**/*.test.ts',
     ],
     exclude: ['**/node_modules/**', '**/dist/**'],
   },
