@@ -14,6 +14,7 @@
     { "path": "./services/ai-orchestrator" },
     { "path": "./services/inference" },
     { "path": "./services/memory" },
-    { "path": "./services/knowledge" }
+    { "path": "./services/knowledge" },
+    { "path": "./services/embeddings" }
   ]
 }

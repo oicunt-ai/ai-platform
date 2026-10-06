@@ -138,7 +138,7 @@ sequenceDiagram
 4. **Object-Storage Ingestion Boundary**: Receives opaque object references (`objectKey`). Object storage authoritatively owns raw file bytes, preventing synchronous transfer of large files through the Knowledge API.
 5. **Text Extraction & Sanitization**: Streaming stored objects via `ObjectStoragePort` and converting raw file payloads into clean, normalized textual content.
 6. **Deterministic Chunking**: Splitting normalized text into semantic, bounded chunks with sliding overlap and header tracking.
-7. **Dedicated Embedding Boundary**: Managing vector generation requests strictly through `EmbeddingServicePort` to the platform Embedding Service boundary (`services/embeddings`), without coupling to provider SDKs or depending on `services/inference`.
+7. **Dedicated Embedding Boundary**: Managing vector generation requests strictly through `EmbeddingServicePort` to the platform Embedding Service boundary (`services/embeddings`; see [Embeddings Service Contract](./embeddings.md)), without coupling to provider SDKs or depending on `services/inference`.
 8. **Abstract Vector Index Boundary**: Storing, indexing, updating, and querying semantic vector spaces without coupling domain logic to a specific vector database vendor.
 9. **Similarity Retrieval**: Executing similarity searches filtered strictly by tenant, collection, document state, and metadata constraints.
 10. **Provenance & Citation Accounting**: Providing granular chunk-level source citations (document ID, chunk ID, collection ID, page/line numbers, scores) to downstream callers without prescribing prompt formatting.
@@ -178,7 +178,7 @@ To eliminate cross-service confusion, OICUNT services answer four distinct, orth
 ```
 
 - **Knowledge does not choose the LLM**: Knowledge retrieves relevant chunks for a query; the AI Orchestrator decides which canonical model from Model Registry will read those chunks.
-- **Knowledge does not talk to Model Gateway or Inference**: When Knowledge needs vector embeddings, it routes strictly through its dedicated abstract `EmbeddingServicePort` to the platform Embedding Service boundary (`services/embeddings`). The Knowledge domain does not depend on the Inference Service as an alternative embedding implementation; embedding execution remains behind the dedicated Embeddings capability.
+- **Knowledge does not talk to Model Gateway or Inference**: When Knowledge needs vector embeddings, it routes strictly through its dedicated abstract `EmbeddingServicePort` to the platform Embedding Service boundary (`services/embeddings`; see [Embeddings Service Contract](./embeddings.md)). The Knowledge domain does not depend on the Inference Service as an alternative embedding implementation; embedding execution remains behind the dedicated Embeddings capability.
 
 ---
 
@@ -548,7 +548,7 @@ export interface VectorStorePort {
 
 ### 5.3 Outbound Port: `EmbeddingServicePort` (Dedicated Embedding Service Boundary)
 
-Abstracts dense vector generation through the dedicated platform Embedding Service capability (`services/embeddings`). The Knowledge domain communicates solely through this port. Embedding execution remains behind the dedicated Embeddings boundary and does not depend on or route through `services/inference`. Provider and model specifics remain encapsulated behind the appropriate platform boundaries.
+Abstracts dense vector generation through the dedicated platform Embedding Service capability (`services/embeddings`; see authoritative specification in [Embeddings Service Contract](./embeddings.md)). The Knowledge domain communicates solely through this port. Embedding execution remains behind the dedicated Embeddings boundary and does not depend on or route through `services/inference`. Provider and model specifics remain encapsulated behind the appropriate platform boundaries.
 
 ```typescript
 export interface EmbeddingRequest {
