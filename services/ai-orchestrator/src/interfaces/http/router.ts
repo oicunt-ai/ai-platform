@@ -9,7 +9,8 @@ export interface RouterDependencies {
   readonly serviceName: string;
   readonly version: string;
   readonly isReady: () => boolean;
-  readonly getHealthChecks?: () => Record<string, 'ok' | 'failed'>;
+  readonly getHealthChecks?: () =>
+    Promise<Record<string, 'ok' | 'failed'>> | Record<string, 'ok' | 'failed'>;
   readonly allowedServiceIdentities: readonly string[];
   readonly internalToken?: string | undefined;
 }
@@ -30,8 +31,17 @@ export function createHttpRouter(
     }
 
     if (method === 'GET' && (pathname === '/readyz' || pathname === '/health/readiness')) {
-      const checks = deps.getHealthChecks ? deps.getHealthChecks() : undefined;
-      sendReadinessResponse(res, deps.isReady(), deps.serviceName, deps.version, checks);
+      const checks = deps.getHealthChecks ? await deps.getHealthChecks() : undefined;
+      const allChecksPass = checks
+        ? Object.values(checks).every((status) => status === 'ok')
+        : true;
+      sendReadinessResponse(
+        res,
+        deps.isReady() && allChecksPass,
+        deps.serviceName,
+        deps.version,
+        checks,
+      );
       return;
     }
 

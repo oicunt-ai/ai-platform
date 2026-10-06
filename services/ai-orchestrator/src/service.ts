@@ -4,11 +4,13 @@ import { NoopAiMetricsRecorder, NoopAiTracer } from '@oicunt-ai/observability';
 import { loadAiOrchestratorConfig, type AiOrchestratorConfig } from './config.js';
 import type { ModelRegistryPort } from './application/ports/model-registry.port.js';
 import type { InferencePort } from './application/ports/inference.port.js';
+import type { MemoryPort } from './application/ports/memory.port.js';
 import type { ResolutionCachePort } from './application/ports/resolution-cache.port.js';
 import { CoordinateChatTurnUseCase } from './application/use-cases/coordinate-chat-turn.use-case.js';
 import { InMemoryResolutionCache } from './infrastructure/cache/in-memory-resolution-cache.js';
 import { HttpModelRegistryClient } from './infrastructure/clients/http-model-registry.client.js';
 import { HttpInferenceClient } from './infrastructure/clients/http-inference.client.js';
+import { HttpMemoryClient } from './infrastructure/clients/http-memory.client.js';
 import { JsonLogger } from './infrastructure/logging/logger.js';
 import { ChatController } from './interfaces/http/controllers/chat.controller.js';
 import { createHttpRouter } from './interfaces/http/router.js';
@@ -17,6 +19,7 @@ export interface AiOrchestratorDependencies {
   readonly config?: AiOrchestratorConfig | undefined;
   readonly modelRegistry?: ModelRegistryPort | undefined;
   readonly inference?: InferencePort | undefined;
+  readonly memory?: MemoryPort | undefined;
   readonly resolutionCache?: ResolutionCachePort | undefined;
   readonly tracer?: AiTracer | undefined;
   readonly metrics?: AiMetricsRecorder | undefined;
@@ -26,6 +29,7 @@ export class AiOrchestratorService {
   private readonly config: AiOrchestratorConfig;
   private readonly modelRegistry: ModelRegistryPort;
   private readonly inference: InferencePort;
+  private readonly memory: MemoryPort;
   private readonly resolutionCache: ResolutionCachePort;
   private readonly logger: JsonLogger;
   private readonly coordinateUseCase: CoordinateChatTurnUseCase;
@@ -50,6 +54,13 @@ export class AiOrchestratorService {
         internalToken: this.config.internalToken,
       });
 
+    this.memory =
+      dependencies.memory ??
+      new HttpMemoryClient({
+        baseUrl: this.config.memoryBaseUrl,
+        internalToken: this.config.internalToken,
+      });
+
     this.resolutionCache =
       dependencies.resolutionCache ?? new InMemoryResolutionCache(this.config.cacheTtlSeconds);
 
@@ -61,6 +72,7 @@ export class AiOrchestratorService {
     this.coordinateUseCase = new CoordinateChatTurnUseCase({
       modelRegistry: this.modelRegistry,
       inference: this.inference,
+      memory: this.memory,
       resolutionCache: this.resolutionCache,
       tracer: dependencies.tracer ?? new NoopAiTracer(),
       metrics: dependencies.metrics ?? new NoopAiMetricsRecorder(),
@@ -91,6 +103,10 @@ export class AiOrchestratorService {
     return this.inference;
   }
 
+  public getMemory(): MemoryPort {
+    return this.memory;
+  }
+
   public getResolutionCache(): ResolutionCachePort {
     return this.resolutionCache;
   }
@@ -105,6 +121,18 @@ export class AiOrchestratorService {
       serviceName: this.config.serviceName,
       version: this.config.version,
       isReady: () => this.ready,
+      getHealthChecks: async () => {
+        const [registryOk, inferenceOk, memoryOk] = await Promise.all([
+          this.modelRegistry.checkHealth().catch(() => false),
+          this.inference.checkHealth().catch(() => false),
+          this.memory.checkHealth().catch(() => false),
+        ]);
+        return {
+          modelRegistry: registryOk ? 'ok' : 'failed',
+          inference: inferenceOk ? 'ok' : 'failed',
+          memory: memoryOk ? 'ok' : 'failed',
+        };
+      },
       allowedServiceIdentities: this.config.allowedServiceIdentities,
       internalToken: this.config.internalToken,
     });

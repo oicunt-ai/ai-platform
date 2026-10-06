@@ -13,6 +13,7 @@ export interface AiOrchestratorConfig {
   readonly maxBodySizeBytes: number;
   readonly modelRegistryBaseUrl: string;
   readonly inferenceBaseUrl: string;
+  readonly memoryBaseUrl: string;
   readonly internalToken?: string | undefined;
   readonly defaultTimeoutMs: number;
   readonly maxTimeoutMs: number;
@@ -77,6 +78,8 @@ export function loadAiOrchestratorConfig(
       'http://localhost:3001',
     inferenceBaseUrl:
       overrides?.inferenceBaseUrl ?? process.env['INFERENCE_BASE_URL'] ?? 'http://localhost:3004',
+    memoryBaseUrl:
+      overrides?.memoryBaseUrl ?? process.env['MEMORY_BASE_URL'] ?? 'http://localhost:3005',
     internalToken: overrides?.internalToken ?? process.env['INTERNAL_SERVICE_TOKEN'],
     defaultTimeoutMs:
       overrides?.defaultTimeoutMs ??

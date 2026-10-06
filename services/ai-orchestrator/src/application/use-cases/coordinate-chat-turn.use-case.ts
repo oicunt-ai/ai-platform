@@ -28,10 +28,12 @@ import type { ModelResolutionResult } from '../dtos/resolution.dto.js';
 import type { InferencePort } from '../ports/inference.port.js';
 import type { ModelRegistryPort } from '../ports/model-registry.port.js';
 import type { ResolutionCachePort } from '../ports/resolution-cache.port.js';
+import type { CheckpointMessageItem, MemoryCallContext, MemoryPort } from '../ports/memory.port.js';
 
 export interface CoordinateChatTurnOptions {
   readonly modelRegistry: ModelRegistryPort;
   readonly inference: InferencePort;
+  readonly memory?: MemoryPort | undefined;
   readonly resolutionCache?: ResolutionCachePort | undefined;
   readonly tracer?: AiTracer | undefined;
   readonly metrics?: AiMetricsRecorder | undefined;
@@ -44,6 +46,7 @@ export interface CoordinateChatTurnOptions {
 export class CoordinateChatTurnUseCase {
   private readonly modelRegistry: ModelRegistryPort;
   private readonly inference: InferencePort;
+  private readonly memory?: MemoryPort | undefined;
   private readonly resolutionCache?: ResolutionCachePort | undefined;
   private readonly tracer: AiTracer;
   private readonly metrics: AiMetricsRecorder;
@@ -55,6 +58,7 @@ export class CoordinateChatTurnUseCase {
   constructor(options: CoordinateChatTurnOptions) {
     this.modelRegistry = options.modelRegistry;
     this.inference = options.inference;
+    this.memory = options.memory;
     this.resolutionCache = options.resolutionCache;
     this.tracer = options.tracer ?? new NoopAiTracer();
     this.metrics = options.metrics ?? new NoopAiMetricsRecorder();
@@ -79,7 +83,6 @@ export class CoordinateChatTurnUseCase {
     const startTime = Date.now();
     this.validateRequest(request, context.correlationId);
 
-    const harmonizedMessages = this.harmonizeMessages(request.messages, request.systemPrompt);
     const { deadlineMs, timeoutMs } = this.calculateBudget(request.timeoutMs);
 
     // Create an abort controller combining parentSignal and deadline
@@ -121,17 +124,62 @@ export class CoordinateChatTurnUseCase {
     });
 
     try {
-      // 1. Resolve model via Registry / L1 cache
+      // 1. Hydrate conversation context from Memory if conversationId is present
+      let effectiveMessages = request.messages;
+      let newTurnMessagesToSave: readonly ChatMessage[] = [];
+
+      if (request.conversationId) {
+        if (!this.memory) {
+          throw new OrchestratorError(
+            'INTERNAL_ORCHESTRATOR_ERROR',
+            'Memory Service port is not configured for conversation execution.',
+            500,
+            false,
+            undefined,
+            undefined,
+            context.correlationId,
+          );
+        }
+
+        const memoryContext: MemoryCallContext = {
+          tenantId: context.tenantId,
+          userId: context.userId,
+          actorId: context.actorId,
+          correlationId: context.correlationId,
+          requestId: context.requestId,
+          turnId: context.turnId,
+          deadlineMs,
+        };
+
+        const hydrated = await this.memory.getContext(
+          request.conversationId,
+          {},
+          memoryContext,
+          abortController.signal,
+        );
+
+        const { combinedMessages, newTurnMessages } = this.combineContextMessages(
+          hydrated.messages,
+          request.messages,
+        );
+
+        effectiveMessages = combinedMessages;
+        newTurnMessagesToSave = newTurnMessages;
+      }
+
+      const harmonizedMessages = this.harmonizeMessages(effectiveMessages, request.systemPrompt);
+
+      // 2. Resolve model via Registry / L1 cache
       const resolution = await this.resolveModelWithCache(request, context, abortController.signal);
 
-      // 2. Validate reasoning effort
+      // 3. Validate reasoning effort
       const effectiveEffort = this.determineEffort(
         request.effort,
         resolution,
         context.correlationId,
       );
 
-      // 3. Preflight context window check
+      // 4. Preflight context window check
       this.validateContextWindow(
         harmonizedMessages,
         resolution,
@@ -139,7 +187,7 @@ export class CoordinateChatTurnUseCase {
         context.correlationId,
       );
 
-      // 4. Construct inference execution request
+      // 5. Construct inference execution request
       const exposeReasoning = request.exposeReasoning ?? this.privacyPolicy.exposeReasoning;
 
       const inferenceRequest: InferenceExecutionRequest = {
@@ -173,7 +221,7 @@ export class CoordinateChatTurnUseCase {
         deadlineMs,
       };
 
-      // 5. Execute unary through Inference Service
+      // 6. Execute unary through Inference Service
       const response = await this.inference.executeUnary(inferenceRequest, abortController.signal);
       const completion = response.data;
 
@@ -185,6 +233,59 @@ export class CoordinateChatTurnUseCase {
       if (!exposeReasoning && Array.isArray(finalMessage.content)) {
         const filteredParts = finalMessage.content.filter((part) => part.type !== 'thinking');
         finalMessage = { ...finalMessage, content: filteredParts };
+      }
+
+      // 7. Checkpoint completed user turn and assistant response to Memory
+      if (
+        request.conversationId &&
+        this.memory &&
+        !abortController.signal.aborted &&
+        completion.finishReason !== 'error' &&
+        completion.finishReason !== 'cancelled'
+      ) {
+        const memoryContext: MemoryCallContext = {
+          tenantId: context.tenantId,
+          userId: context.userId,
+          actorId: context.actorId,
+          correlationId: context.correlationId,
+          requestId: context.requestId,
+          turnId: context.turnId,
+          deadlineMs,
+        };
+
+        const messagesToCheckpoint: CheckpointMessageItem[] = [
+          ...newTurnMessagesToSave.map((m) => ({
+            role: m.role,
+            content: m.content,
+            ...(m.name ? { name: m.name } : {}),
+            metadata: {
+              ...(m.metadata ?? {}),
+              requestId: context.requestId,
+              turnId: context.turnId,
+            },
+          })),
+          {
+            role: 'assistant',
+            content: finalMessage.content,
+            ...(finalMessage.name ? { name: finalMessage.name } : {}),
+            metadata: {
+              ...(finalMessage.metadata ?? {}),
+              requestId: context.requestId,
+              turnId: context.turnId,
+              completionId: completion.completionId,
+            },
+          },
+        ];
+
+        await this.memory.checkpointTurn(
+          {
+            conversationId: request.conversationId,
+            turnId: context.turnId,
+            messages: messagesToCheckpoint,
+          },
+          memoryContext,
+          abortController.signal,
+        );
       }
 
       const chatData: OrchestratorChatData = {
@@ -262,7 +363,6 @@ export class CoordinateChatTurnUseCase {
     const startTime = Date.now();
     this.validateRequest(request, context.correlationId);
 
-    const harmonizedMessages = this.harmonizeMessages(request.messages, request.systemPrompt);
     const { deadlineMs, timeoutMs } = this.calculateBudget(request.timeoutMs);
 
     const abortController = new AbortController();
@@ -305,17 +405,62 @@ export class CoordinateChatTurnUseCase {
     let emittedFirstEvent = false;
 
     try {
-      // 1. Resolve model via Registry / L1 cache
+      // 1. Hydrate conversation context from Memory if conversationId is present
+      let effectiveMessages = request.messages;
+      let newTurnMessagesToSave: readonly ChatMessage[] = [];
+
+      if (request.conversationId) {
+        if (!this.memory) {
+          throw new OrchestratorError(
+            'INTERNAL_ORCHESTRATOR_ERROR',
+            'Memory Service port is not configured for conversation execution.',
+            500,
+            false,
+            undefined,
+            undefined,
+            context.correlationId,
+          );
+        }
+
+        const memoryContext: MemoryCallContext = {
+          tenantId: context.tenantId,
+          userId: context.userId,
+          actorId: context.actorId,
+          correlationId: context.correlationId,
+          requestId: context.requestId,
+          turnId: context.turnId,
+          deadlineMs,
+        };
+
+        const hydrated = await this.memory.getContext(
+          request.conversationId,
+          {},
+          memoryContext,
+          abortController.signal,
+        );
+
+        const { combinedMessages, newTurnMessages } = this.combineContextMessages(
+          hydrated.messages,
+          request.messages,
+        );
+
+        effectiveMessages = combinedMessages;
+        newTurnMessagesToSave = newTurnMessages;
+      }
+
+      const harmonizedMessages = this.harmonizeMessages(effectiveMessages, request.systemPrompt);
+
+      // 2. Resolve model via Registry / L1 cache
       const resolution = await this.resolveModelWithCache(request, context, abortController.signal);
 
-      // 2. Validate reasoning effort
+      // 3. Validate reasoning effort
       const effectiveEffort = this.determineEffort(
         request.effort,
         resolution,
         context.correlationId,
       );
 
-      // 3. Preflight context window check
+      // 4. Preflight context window check
       this.validateContextWindow(
         harmonizedMessages,
         resolution,
@@ -323,7 +468,7 @@ export class CoordinateChatTurnUseCase {
         context.correlationId,
       );
 
-      // 4. Construct inference execution request
+      // 5. Construct inference execution request
       const exposeReasoning = request.exposeReasoning ?? this.privacyPolicy.exposeReasoning;
 
       const inferenceRequest: InferenceExecutionRequest = {
@@ -357,18 +502,29 @@ export class CoordinateChatTurnUseCase {
         deadlineMs,
       };
 
-      // 5. Execute stream through Inference Service
+      // 6. Execute stream through Inference Service
       const stream = this.inference.executeStream(inferenceRequest, abortController.signal);
 
+      let accumulatedText = '';
+      let accumulatedThinking = '';
+      let pendingFinishEvent: (StreamEvent & { event: 'finish' }) | null = null;
+
       for await (const event of stream) {
-        emittedFirstEvent = true;
+        if (event.event === 'token') {
+          accumulatedText += event.data.delta;
+          emittedFirstEvent = true;
+          yield event;
+        } else if (event.event === 'thinking') {
+          accumulatedThinking += event.data.delta;
+          if (!exposeReasoning) {
+            // Drop thinking event if policy suppresses it
+            continue;
+          }
+          emittedFirstEvent = true;
+          yield event;
+        } else if (event.event === 'finish') {
+          pendingFinishEvent = event;
 
-        if (event.event === 'thinking' && !exposeReasoning) {
-          // Drop thinking event if policy suppresses it
-          continue;
-        }
-
-        if (event.event === 'finish') {
           const turnLatencyMs = Date.now() - startTime;
           const estimatedCostUsd = calculateTurnCost(resolution.pricing, event.data.usage);
 
@@ -392,9 +548,78 @@ export class CoordinateChatTurnUseCase {
           span.setAttribute('oicunt.estimated_cost_usd', estimatedCostUsd ?? 0);
           span.setStatus('ok');
           span.end();
+          // Defer yielding finish until Memory checkpoint succeeds
+        } else {
+          emittedFirstEvent = true;
+          yield event;
+        }
+      }
+
+      // 7. Checkpoint completed streaming turn to Memory BEFORE emitting terminal finish event
+      if (pendingFinishEvent) {
+        const finishReason = pendingFinishEvent.data.finishReason;
+
+        if (
+          request.conversationId &&
+          this.memory &&
+          finishReason !== 'error' &&
+          finishReason !== 'cancelled' &&
+          !abortController.signal.aborted
+        ) {
+          const memoryContext: MemoryCallContext = {
+            tenantId: context.tenantId,
+            userId: context.userId,
+            actorId: context.actorId,
+            correlationId: context.correlationId,
+            requestId: context.requestId,
+            turnId: context.turnId,
+            deadlineMs,
+          };
+
+          const assistantContent: string | readonly MessageContentPart[] =
+            accumulatedThinking.length > 0 && exposeReasoning
+              ? [
+                  { type: 'thinking', thinking: accumulatedThinking },
+                  { type: 'text', text: accumulatedText },
+                ]
+              : accumulatedText;
+
+          const messagesToCheckpoint: CheckpointMessageItem[] = [
+            ...newTurnMessagesToSave.map((m) => ({
+              role: m.role,
+              content: m.content,
+              ...(m.name ? { name: m.name } : {}),
+              metadata: {
+                ...(m.metadata ?? {}),
+                requestId: context.requestId,
+                turnId: context.turnId,
+              },
+            })),
+            {
+              role: 'assistant',
+              content: assistantContent,
+              metadata: {
+                requestId: context.requestId,
+                turnId: context.turnId,
+                finishReason,
+              },
+            },
+          ];
+
+          await this.memory.checkpointTurn(
+            {
+              conversationId: request.conversationId,
+              turnId: context.turnId,
+              messages: messagesToCheckpoint,
+            },
+            memoryContext,
+            abortController.signal,
+          );
         }
 
-        yield event;
+        // Only after Memory checkpoint succeeds (or if stateless), emit terminal finish event
+        emittedFirstEvent = true;
+        yield pendingFinishEvent;
       }
     } catch (err: unknown) {
       const normalizedError = this.normalizeError(
@@ -443,6 +668,75 @@ export class CoordinateChatTurnUseCase {
       if (msg.content === undefined || msg.content === null) {
         throw new InvalidRequestError('Message content cannot be null or undefined', correlationId);
       }
+    }
+  }
+
+  private combineContextMessages(
+    history: readonly ChatMessage[],
+    incoming: readonly ChatMessage[],
+  ): {
+    readonly combinedMessages: readonly ChatMessage[];
+    readonly newTurnMessages: readonly ChatMessage[];
+  } {
+    const systemMessages = incoming.filter((m) => m.role === 'system');
+    const nonSystemIncoming = incoming.filter((m) => m.role !== 'system');
+
+    if (history.length === 0) {
+      return {
+        combinedMessages: incoming,
+        newTurnMessages: nonSystemIncoming,
+      };
+    }
+
+    if (nonSystemIncoming.length === 0) {
+      return {
+        combinedMessages: [...systemMessages, ...history],
+        newTurnMessages: [],
+      };
+    }
+
+    const maxOverlap = Math.min(history.length, nonSystemIncoming.length);
+    let matchedOverlap = 0;
+
+    for (let overlap = maxOverlap; overlap >= 1; overlap--) {
+      let matches = true;
+      for (let i = 0; i < overlap; i++) {
+        const histMsg = history[history.length - overlap + i];
+        const incMsg = nonSystemIncoming[i];
+        if (!histMsg || !incMsg || !this.areMessagesEqual(histMsg, incMsg)) {
+          matches = false;
+          break;
+        }
+      }
+      if (matches) {
+        matchedOverlap = overlap;
+        break;
+      }
+    }
+
+    const newTurnMessages = nonSystemIncoming.slice(matchedOverlap);
+    const combinedMessages = [...systemMessages, ...history, ...newTurnMessages];
+
+    return {
+      combinedMessages,
+      newTurnMessages,
+    };
+  }
+
+  private areMessagesEqual(a: ChatMessage, b: ChatMessage): boolean {
+    if (a.role !== b.role) {
+      return false;
+    }
+    if (a.name !== b.name) {
+      return false;
+    }
+    if (typeof a.content === 'string' && typeof b.content === 'string') {
+      return a.content === b.content;
+    }
+    try {
+      return JSON.stringify(a.content) === JSON.stringify(b.content);
+    } catch {
+      return false;
     }
   }
 

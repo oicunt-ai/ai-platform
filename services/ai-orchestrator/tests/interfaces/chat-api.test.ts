@@ -3,6 +3,7 @@ import { AiOrchestratorService } from '../../src/service.js';
 import { loadAiOrchestratorConfig } from '../../src/config.js';
 import { FakeModelRegistry } from '../test-doubles/fake-model-registry.js';
 import { FakeInference } from '../test-doubles/fake-inference.js';
+import { FakeMemory } from '../test-doubles/fake-memory.js';
 
 interface TestChatResponse {
   readonly success: boolean;
@@ -43,6 +44,7 @@ describe('HTTP Interfaces - Chat API', () => {
       config,
       modelRegistry: fakeRegistry,
       inference: fakeInference,
+      memory: new FakeMemory(),
     });
 
     const port = await service.start();
