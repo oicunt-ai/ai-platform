@@ -23,6 +23,10 @@ export default defineConfig({
         'services/model-gateway/src/index.ts',
       ),
       '@oicunt-ai/service-memory': resolve(import.meta.dirname, 'services/memory/src/index.ts'),
+      '@oicunt-ai/service-knowledge': resolve(
+        import.meta.dirname,
+        'services/knowledge/src/index.ts',
+      ),
     },
   },
   test: {

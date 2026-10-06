@@ -1,0 +1,27 @@
+{
+  "name": "@oicunt-ai/service-knowledge",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js",
+      "default": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -b && node -e \"import('node:fs').then(fs => { fs.mkdirSync('dist/infrastructure/database/migrations', { recursive: true }); fs.cpSync('src/infrastructure/database/migrations', 'dist/infrastructure/database/migrations', { recursive: true }); });\"",
+    "type-check": "tsc -b --noEmit"
+  },
+  "dependencies": {
+    "@oicunt-ai/ai-types": "workspace:*",
+    "@oicunt-ai/observability": "workspace:*",
+    "pg": "^8.13.1"
+  },
+  "devDependencies": {
+    "@types/pg": "^8.11.10"
+  }
+}

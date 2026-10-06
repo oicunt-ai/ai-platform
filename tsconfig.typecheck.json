@@ -17,7 +17,8 @@
       "@oicunt-ai/service-model-gateway": ["./services/model-gateway/src/index.ts"],
       "@oicunt-ai/service-ai-orchestrator": ["./services/ai-orchestrator/src/index.ts"],
       "@oicunt-ai/service-inference": ["./services/inference/src/index.ts"],
-      "@oicunt-ai/service-memory": ["./services/memory/src/index.ts"]
+      "@oicunt-ai/service-memory": ["./services/memory/src/index.ts"],
+      "@oicunt-ai/service-knowledge": ["./services/knowledge/src/index.ts"]
     }
   },
   "include": [

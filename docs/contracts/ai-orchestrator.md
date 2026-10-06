@@ -1011,8 +1011,9 @@ While the initial implementation focuses on conversational chat orchestration, t
 
 ### 22.2 Knowledge & Semantic Retrieval / RAG (`services/knowledge` & `services/embeddings`)
 
-- **Port**: `KnowledgeRetrievalPort`
-- **Future Integration**: Performs semantic search against enterprise vector indices and injects grounded document context chunks into the prompt context prior to model dispatch.
+- **Port**: `KnowledgePort`
+- **Specification**: [`docs/contracts/knowledge.md`](./knowledge.md)
+- **Integration**: Queries tenant-isolated knowledge collections via `retrieveRelevantContext(query, options, context, signal)`. The Orchestrator decides whether and how retrieved chunks and provenance are integrated into the conversational turn and formatted as model context before calling Inference. Knowledge never executes LLM inference or communicates with model providers directly.
 
 ### 22.3 Isolated Tool Sandboxes (`services/tools`)
 
