@@ -1006,6 +1006,7 @@ While the initial implementation focuses on conversational chat orchestration, t
 ### 22.1 Working Memory & Conversation History (`services/memory`)
 
 - **Port**: `ConversationMemoryPort`
+- **Specification**: [`docs/contracts/memory.md`](./memory.md)
 - **Future Integration**: Automatically loads preceding conversation turns, summarizes older context into sliding memory windows, and checkpoints new turns into an episodic context store.
 
 ### 22.2 Knowledge & Semantic Retrieval / RAG (`services/knowledge` & `services/embeddings`)

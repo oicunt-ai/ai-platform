@@ -12,6 +12,7 @@
     { "path": "./services/model-registry" },
     { "path": "./services/model-gateway" },
     { "path": "./services/ai-orchestrator" },
-    { "path": "./services/inference" }
+    { "path": "./services/inference" },
+    { "path": "./services/memory" }
   ]
 }

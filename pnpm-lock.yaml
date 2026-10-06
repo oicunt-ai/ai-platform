@@ -252,6 +252,22 @@ importers:
         specifier: workspace:*
         version: link:../../packages/observability
 
+  services/memory:
+    dependencies:
+      '@oicunt-ai/ai-types':
+        specifier: workspace:*
+        version: link:../../packages/ai-types
+      '@oicunt-ai/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      pg:
+        specifier: ^8.13.1
+        version: 8.23.1
+    devDependencies:
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.23.1
+
   services/model-gateway:
     dependencies:
       '@oicunt-ai/ai-types':
