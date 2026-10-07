@@ -11,6 +11,7 @@
       "@oicunt-ai/tool-types": ["./packages/tool-types/src/index.ts"],
       "@oicunt-ai/agent-types": ["./packages/agent-types/src/index.ts"],
       "@oicunt-ai/mcp-types": ["./packages/mcp-types/src/index.ts"],
+      "@oicunt-ai/usage-types": ["./packages/usage-types/src/index.ts"],
       "@oicunt-ai/observability": ["./packages/observability/src/index.ts"],
       "@oicunt-ai/service-template": ["./templates/service/src/index.ts"],
       "@oicunt-ai/service-model-registry": ["./services/model-registry/src/index.ts"],
@@ -23,6 +24,7 @@
       "@oicunt-ai/service-tools": ["./services/tools/src/index.ts"],
       "@oicunt-ai/service-agents": ["./services/agents/src/index.ts"],
       "@oicunt-ai/service-mcp": ["./services/mcp/src/index.ts"],
+      "@oicunt-ai/service-usage": ["./services/usage/src/index.ts"],
       "@oicunt-ai/worker-agent-jobs": ["./workers/agent-jobs/src/index.ts"]
     }
   },

@@ -228,6 +228,8 @@ importers:
 
   packages/tool-types: {}
 
+  packages/usage-types: {}
+
   services/agents:
     dependencies:
       '@oicunt-ai/agent-types':
@@ -407,6 +409,37 @@ importers:
       '@types/pg':
         specifier: ^8.11.10
         version: 8.23.1
+
+  services/usage:
+    dependencies:
+      '@oicunt-ai/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@oicunt-ai/usage-types':
+        specifier: workspace:*
+        version: link:../../packages/usage-types
+      amqplib:
+        specifier: ^2.2.0
+        version: 2.2.0
+      pg:
+        specifier: ^8.13.1
+        version: 8.23.1
+    devDependencies:
+      '@types/amqplib':
+        specifier: ^0.10.8
+        version: 0.10.8
+      '@types/node':
+        specifier: ^26.6.4
+        version: 26.6.4
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.23.1
+      typescript:
+        specifier: ~5.7.3
+        version: 5.7.3
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.3(@types/node@26.6.4)(vite@8.3.2(@types/node@26.6.4))
 
   templates/service:
     dependencies:

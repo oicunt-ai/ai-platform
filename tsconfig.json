@@ -7,6 +7,7 @@
     { "path": "./packages/tool-types" },
     { "path": "./packages/agent-types" },
     { "path": "./packages/mcp-types" },
+    { "path": "./packages/usage-types" },
     { "path": "./packages/observability" },
     { "path": "./templates/service" },
     { "path": "./services/model-registry" },
@@ -19,6 +20,7 @@
     { "path": "./services/tools" },
     { "path": "./services/agents" },
     { "path": "./services/mcp" },
+    { "path": "./services/usage" },
     { "path": "./workers/agent-jobs" }
   ]
 }

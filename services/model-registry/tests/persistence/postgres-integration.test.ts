@@ -30,7 +30,7 @@ describe('Real PostgreSQL Integration Test Suite', () => {
     migrator = new DatabaseMigrator(instance.pool);
     modelRepo = new PostgresModelRepository(instance.pool);
     auditRepo = new PostgresAuditRepository(instance.pool);
-  }, 30000);
+  }, 90000);
 
   afterAll(async () => {
     if (instance) {

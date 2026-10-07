@@ -274,7 +274,7 @@ Each service and package maintains three testing tiers:
 
 ## 5. Future AI Services Landscape
 
-The following 10 services are planned for future implementation milestones:
+The following 11 services are planned for future implementation milestones:
 
 ```
 services/
@@ -287,7 +287,8 @@ services/
 ├── embeddings/         # High-throughput vector embedding generation endpoint (see docs/contracts/embeddings.md)
 ├── tools/              # Centralized tool execution engine, sandboxing, permission checks (see docs/contracts/tools.md)
 ├── agents/             # Autonomous agent state machine, persistent run loops, step execution (see docs/contracts/agents.md)
-└── mcp/                # Model Context Protocol bridge and server connectors (see docs/contracts/mcp.md)
+├── mcp/                # Model Context Protocol bridge and server connectors (see docs/contracts/mcp.md)
+└── usage/              # Platform usage metering, event deduplication, and aggregation (see docs/contracts/usage.md)
 ```
 
 ### Detailed Service Responsibilities
@@ -303,6 +304,7 @@ services/
 | `embeddings`     | Authoritative provider-neutral vector embedding generation layer. Enforces batch atomicity, dimension validation, and dispatches egress via Model Gateway (see [Embeddings Service Contract](./contracts/embeddings.md)).   | HTTP embedding generation (`/internal/v1/embeddings/embed`)        | Model Registry, Model Gateway                                                    |
 | `tools`          | Canonical tool catalog, execution engine, sandboxing, permission checks, and capability governance (see [Tools Service Contract](./contracts/tools.md)).                                                                    | HTTP discovery, execution, & registration (`/internal/v1/tools/*`) | Sandboxed runtimes, OICUNT services, external APIs, MCP bridge                   |
 | `mcp`            | Model Context Protocol gateway and bridge connecting external tool, resource, and prompt servers into the AI platform, and exposing approved OICUNT tools to external MCP clients (see [MCP Contract](./contracts/mcp.md)). | Streamable HTTP / stdio / legacy SSE                               | Tools Service (`services/tools`)                                                 |
+| `usage`          | Authoritative operational consumption measurement, deduplication, temporal rollups, and reporting boundary (see [Usage Service Contract](./contracts/usage.md)).                                                            | AMQP event consumer (`oicunt.usage`), HTTP query API               | Dedicated PostgreSQL (`oicunt_usage`), RabbitMQ                                  |
 
 ---
 

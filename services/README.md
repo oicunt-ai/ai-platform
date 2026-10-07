@@ -45,7 +45,7 @@ A reusable service template demonstrating this pattern is provided in `templates
 
 ## 3. Planned AI Services Landscape
 
-The following 10 services are designated for future implementation milestones:
+The following 11 services are designated for future implementation milestones:
 
 ```
 services/
@@ -58,7 +58,8 @@ services/
 ├── embeddings/         # High-throughput vector embedding generation endpoint (see docs/contracts/embeddings.md)
 ├── tools/              # Centralized tool execution engine, sandboxing, and permission checks (see docs/contracts/tools.md)
 ├── agents/             # Autonomous agent state machine, persistent run loops, and task step execution (see docs/contracts/agents.md)
-└── mcp/                # Model Context Protocol bridge and server connectors (see docs/contracts/mcp.md)
+├── mcp/                # Model Context Protocol bridge and server connectors (see docs/contracts/mcp.md)
+└── usage/              # Platform usage metering, event deduplication, and aggregation (see docs/contracts/usage.md)
 ```
 
 ### Detailed Service Specifications
@@ -74,6 +75,7 @@ services/
 | `embeddings`     | Authoritative provider-neutral vector embedding generation layer. Enforces batch atomicity, dimension validation, and dispatches egress via Model Gateway (see [Embeddings Service Contract](../docs/contracts/embeddings.md)).   | HTTP embedding API (`/internal/v1/embeddings/embed`)                   | Model Registry, Model Gateway                                                    | Provider-neutral. Never holds provider credentials or calls providers directly. Enforces strict input-to-vector ordering and batch atomicity. Never logs raw text or vector floats.    |
 | `tools`          | Canonical tool catalog, execution engine, sandboxing, permission checks, and capability governance (see [Tools Service Contract](../docs/contracts/tools.md)).                                                                    | HTTP discovery, execution, & registration (`/internal/v1/tools/*`)     | Sandboxed runtimes, OICUNT services, external APIs, MCP bridge                   | Executes tool calls in isolated sandboxes with strict execution timeouts, SSRF firewalls, and pre-execution schema validation.                                                         |
 | `mcp`            | Model Context Protocol gateway and bridge connecting external tool, resource, and prompt servers into the AI platform, and exposing approved OICUNT tools to external MCP clients (see [MCP Contract](../docs/contracts/mcp.md)). | Streamable HTTP / stdio / legacy SSE                                   | Tools Service (`services/tools`)                                                 | Protocol-only boundary. Bridges MCP protocol framing to internal Tools Service interfaces. Never executes tools directly; never bypasses Tool security or authorization.               |
+| `usage`          | Authoritative operational consumption measurement, deduplication, temporal rollups, and reporting boundary (see [Usage Service Contract](../docs/contracts/usage.md)).                                                            | AMQP event consumer (`oicunt.usage`), HTTP query API                   | Dedicated PostgreSQL (`oicunt_usage`), RabbitMQ                                  | Out-of-band operational metering. Decoupled from runtime latency. Measures consumption; never bills, prices, or executes workloads directly.                                           |
 
 ---
 
