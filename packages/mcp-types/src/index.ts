@@ -8,7 +8,7 @@ export const MCP_LATEST_PROTOCOL_VERSION = '2024-11-05';
 /**
  * Underlying transport channel for MCP connections.
  */
-export type McpTransportType = 'stdio' | 'sse' | 'websocket';
+export type McpTransportType = 'stdio' | 'streamable_http' | 'sse' | 'websocket';
 
 /**
  * Capabilities declared by an MCP Server during handshake.

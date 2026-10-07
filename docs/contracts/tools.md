@@ -943,18 +943,19 @@ Standard health and readiness probes.
 ### 19.1 Tools ↔ Model Context Protocol (MCP)
 
 > [!IMPORTANT]
-> **MCP Architectural Relationship**: MCP is an **interoperability protocol**, not a second tool execution architecture. Tools is the authoritative runtime.
+> **MCP Architectural Relationship**: MCP is an **interoperability protocol boundary**, not a second tool execution architecture. Tools is the authoritative runtime. For complete transport framing, session lifecycles, capability normalization, and security rules, see the authoritative [MCP Architecture Contract](./mcp.md).
 
 ```
 ┌────────────────────────────────────────────────────────┐
 │               External MCP Clients                     │
 │        (Claude Desktop, Cursor, External Agents)       │
 └───────────────────────────┬────────────────────────────┘
-                            │ MCP Wire Protocol (stdio / SSE)
+                            │ MCP Wire Protocol (Streamable HTTP / stdio / legacy SSE)
                             ▼
 ┌────────────────────────────────────────────────────────┐
-│                 OICUNT MCP Bridge                      │
+│                 OICUNT MCP Subsystem                   │
 │            (Protocol Translation Boundary)             │
+│            (see docs/contracts/mcp.md)                 │
 └───────────────────────────┬────────────────────────────┘
                             │ POST /internal/v1/tools/execute
                             ▼
@@ -970,8 +971,8 @@ Standard health and readiness probes.
 └────────────────────────────────────────────────────────┘
 ```
 
-1. **Tools Exposed via MCP (Outbound)**: The MCP Bridge can expose approved OICUNT tools to external MCP clients. Invocations from external clients hit the MCP Bridge, which calls `POST /internal/v1/tools/execute`. All OICUNT validation, tenant isolation, and audit logging apply.
-2. **MCP Servers Consumed by Tools (Inbound)**: When OICUNT connects to an external MCP server, the MCP server's tools are registered inside the Tools Service under `source: 'mcp'`. Invocations dispatch via `McpAdapter`.
+1. **Tools Exposed via MCP (Outbound)**: The MCP Subsystem can expose approved OICUNT tools to external MCP clients. Invocations from external clients hit the MCP Subsystem, which delegates to `POST /internal/v1/tools/execute`. All OICUNT validation, tenant isolation, and audit logging apply (see [MCP Architecture Contract](./mcp.md)).
+2. **MCP Servers Consumed by Tools (Inbound)**: When OICUNT connects to an external MCP server, the MCP server's tools are registered inside the Tools Service under `source: 'mcp'`. Invocations dispatch via `McpAdapter` (`services/tools/src/infrastructure/adapters/mcp-tool.adapter.ts`).
 
 ### 19.2 Tools ↔ Autonomous Agents
 

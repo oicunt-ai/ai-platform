@@ -33,6 +33,7 @@ export default defineConfig({
       ),
       '@oicunt-ai/service-tools': resolve(import.meta.dirname, 'services/tools/src/index.ts'),
       '@oicunt-ai/service-agents': resolve(import.meta.dirname, 'services/agents/src/index.ts'),
+      '@oicunt-ai/service-mcp': resolve(import.meta.dirname, 'services/mcp/src/index.ts'),
       '@oicunt-ai/worker-agent-jobs': resolve(
         import.meta.dirname,
         'workers/agent-jobs/src/index.ts',

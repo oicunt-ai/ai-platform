@@ -18,6 +18,7 @@
     { "path": "./services/embeddings" },
     { "path": "./services/tools" },
     { "path": "./services/agents" },
+    { "path": "./services/mcp" },
     { "path": "./workers/agent-jobs" }
   ]
 }

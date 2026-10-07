@@ -868,7 +868,7 @@ The Agents Service **never** executes tool code directly. When a model selects a
 
 - The Agents Service **does not implement MCP wire transports** (stdio, SSE, WebSockets).
 - MCP tools are exposed into the platform via the **Tools Service** (`services/tools`) under `source: 'mcp'`.
-- The Agents Service treats MCP tools identically to any other canonical tool (`oicunt.tool.*`), maintaining complete decoupling from external protocol framing.
+- The Agents Service treats MCP tools identically to any other canonical tool (`oicunt.tool.*`), maintaining complete decoupling from external protocol framing (see [MCP Architecture Contract](./mcp.md)).
 
 ---
 

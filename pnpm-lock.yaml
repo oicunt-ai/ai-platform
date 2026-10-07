@@ -311,6 +311,37 @@ importers:
         specifier: ^8.11.10
         version: 8.23.1
 
+  services/mcp:
+    dependencies:
+      '@oicunt-ai/ai-types':
+        specifier: workspace:*
+        version: link:../../packages/ai-types
+      '@oicunt-ai/mcp-types':
+        specifier: workspace:*
+        version: link:../../packages/mcp-types
+      '@oicunt-ai/observability':
+        specifier: workspace:*
+        version: link:../../packages/observability
+      '@oicunt-ai/tool-types':
+        specifier: workspace:*
+        version: link:../../packages/tool-types
+      pg:
+        specifier: ^8.13.1
+        version: 8.23.1
+    devDependencies:
+      '@types/node':
+        specifier: ^26.6.4
+        version: 26.6.4
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.23.1
+      typescript:
+        specifier: ~5.7.3
+        version: 5.7.3
+      vitest:
+        specifier: ^5.0.3
+        version: 5.0.3(@types/node@26.6.4)(vite@8.3.2(@types/node@26.6.4))
+
   services/memory:
     dependencies:
       '@oicunt-ai/ai-types':

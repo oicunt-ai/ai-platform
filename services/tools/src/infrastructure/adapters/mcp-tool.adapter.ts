@@ -33,8 +33,16 @@ export class McpToolAdapter implements ToolExecutorPort {
     context: ToolExecutionContext,
   ): Promise<ToolExecutionOutput> {
     const startTime = Date.now();
-    const serverName = (request.metadata?.['mcpServerName'] as string) || 'default-mcp-server';
-    const toolName = definition.toolId.replace('oicunt.tool.', '');
+    let serverName = (request.metadata?.['mcpServerName'] as string) || 'default-mcp-server';
+    let toolName = definition.toolId.replace('oicunt.tool.', '');
+
+    if (definition.toolId.startsWith('oicunt.tool.mcp.')) {
+      const parts = definition.toolId.slice('oicunt.tool.mcp.'.length).split('.');
+      if (parts.length >= 2) {
+        serverName = parts[0]!;
+        toolName = parts.slice(1).join('.');
+      }
+    }
 
     if (this.caller) {
       const output = await this.caller.callTool({

@@ -4,4 +4,5 @@ export * from './sandbox-tool.adapter.js';
 export * from './external-api-tool.adapter.js';
 export * from './mcp-tool.adapter.js';
 export * from './mock-tool.adapter.js';
+export * from './http-mcp-tool-caller.js';
 export * from './tool-executor-router.js';
