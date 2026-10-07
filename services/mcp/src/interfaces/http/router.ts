@@ -5,12 +5,17 @@ import { isHealthCheckPath, validateInternalToken } from './auth.js';
 import { extractRequestContext } from './context.js';
 import { handleLiveness, handleReadiness } from './health.js';
 import { sendErrorResponse } from './middleware.js';
-import type { ExecutionController, ServersController } from './controllers/index.js';
+import type {
+  ExecutionController,
+  McpGatewayController,
+  ServersController,
+} from './controllers/index.js';
 import { McpInvalidRequestError } from '../../domain/errors.js';
 
 export interface RouterDependencies {
   readonly serversController: ServersController;
   readonly executionController: ExecutionController;
+  readonly mcpGatewayController?: McpGatewayController | undefined;
   readonly dbPool: DatabasePool | null;
   readonly internalToken?: string | undefined;
   readonly logger?: JsonLogger | undefined;
@@ -37,6 +42,14 @@ export function createHttpRouter(deps: RouterDependencies) {
     const context = extractRequestContext(req, res);
 
     try {
+      // Phase 2: Outbound MCP Server Gateway endpoint (Streamable HTTP)
+      if (pathname === '/mcp' && method === 'POST') {
+        if (deps.mcpGatewayController) {
+          await deps.mcpGatewayController.handleMcpPost(req, res, context);
+          return;
+        }
+      }
+
       validateInternalToken(req, deps.internalToken);
 
       // Route: POST /internal/v1/mcp/servers

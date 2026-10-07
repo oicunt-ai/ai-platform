@@ -92,7 +92,7 @@ export interface McpTool {
  */
 export interface McpJsonRpcRequest {
   readonly jsonrpc: '2.0';
-  readonly id: string | number;
+  readonly id?: string | number | null;
   readonly method: string;
   readonly params?: Record<string, unknown>;
 }
@@ -111,7 +111,7 @@ export interface McpJsonRpcError {
  */
 export interface McpJsonRpcResponse {
   readonly jsonrpc: '2.0';
-  readonly id: string | number;
+  readonly id: string | number | null;
   readonly result?: unknown;
   readonly error?: McpJsonRpcError;
 }

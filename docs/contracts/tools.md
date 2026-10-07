@@ -40,7 +40,7 @@ The Tools Service provides an uncompromised abstraction over heterogeneous capab
 ```
 
 > [!IMPORTANT]
-> **Cardinal Boundary Rule**: The Tools Service is the **canonical internal capability execution boundary**. It owns _what tools exist_ and _how they execute safely_. Consuming agents, the AI Orchestrator, and external Model Context Protocol (MCP) bridges **never** execute tool code directly, never bypass the Tools authorization perimeter, and never implement independent tool sandboxes.
+> **Cardinal Boundary Rule**: The Tools Service is the **canonical internal capability execution boundary**. It owns _what tools exist_ and _how they execute safely_. Consuming agents, the AI Orchestrator, and Model Context Protocol (MCP) bridges and server gateways (`services/mcp`) **never** execute tool code directly, never bypass the Tools authorization perimeter, and never implement independent tool sandboxes. All outbound MCP tool calls delegate to `POST /internal/v1/tools/execute`.
 
 ---
 

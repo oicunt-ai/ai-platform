@@ -14,6 +14,9 @@ export interface McpConfig {
   readonly maxTimeoutMs: number;
   readonly isProduction: boolean;
   readonly allowedStdioExecutables: readonly string[];
+  readonly serverSessionInactivityTimeoutMs: number;
+  readonly serverSessionMaxTtlMs: number;
+  readonly maxRequestSizeBytes: number;
 }
 
 export function loadMcpConfig(overrides: Partial<McpConfig> = {}): McpConfig {
@@ -63,5 +66,14 @@ export function loadMcpConfig(overrides: Partial<McpConfig> = {}): McpConfig {
       (process.env['MCP_ALLOWED_STDIO_EXECUTABLES']
         ? process.env['MCP_ALLOWED_STDIO_EXECUTABLES'].split(',').map((s) => s.trim())
         : ['node', 'npx', 'python', 'python3', 'uvx', 'uv', 'deno', 'bun']),
+    serverSessionInactivityTimeoutMs:
+      overrides.serverSessionInactivityTimeoutMs ??
+      Number.parseInt(process.env['MCP_SERVER_SESSION_INACTIVITY_TIMEOUT_MS'] ?? '900000', 10),
+    serverSessionMaxTtlMs:
+      overrides.serverSessionMaxTtlMs ??
+      Number.parseInt(process.env['MCP_SERVER_SESSION_MAX_TTL_MS'] ?? '86400000', 10),
+    maxRequestSizeBytes:
+      overrides.maxRequestSizeBytes ??
+      Number.parseInt(process.env['MCP_MAX_REQUEST_SIZE_BYTES'] ?? '2097152', 10),
   };
 }

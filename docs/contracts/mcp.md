@@ -250,10 +250,21 @@ classDiagram
         +DateTime lastHeartbeatAt
     }
 
+    class McpServerGatewaySession {
+        +McpSessionId sessionId
+        +string tenantId
+        +string userId
+        +string actorId
+        +string[] roles
+        +McpImplementationInfo clientInfo
+        +DateTime connectedAt
+        +DateTime lastActivityAt
+    }
+
     McpServerRegistration "1" *-- "many" McpToolDescriptor : discovers tools
     McpServerRegistration "1" *-- "many" McpResourceDescriptor : discovers resources
     McpServerRegistration "1" *-- "many" McpPromptDescriptor : discovers prompts
-    McpServerRegistration "1" *-- "0..1" McpSession : active connection
+    McpServerRegistration "1" *-- "0..1" McpSession : active inbound connection
 ```
 
 ---
@@ -313,37 +324,382 @@ sequenceDiagram
 
 ---
 
-## 7. Direction B: Exposing OICUNT Capabilities through MCP (Outbound Capabilities)
+## 7. Direction B: OICUNT MCP Server Gateway (Phase 2 Outbound Architecture)
 
-The OICUNT AI Platform can act as an authoritative MCP Server, projecting approved internal tools outwards to external MCP-compliant clients:
+The **OICUNT MCP Server Gateway** enables external MCP-compliant clients (such as developer IDEs, desktop AI assistants, external agent runtimes, or partner platforms) to connect directly to the OICUNT AI Platform and utilize approved OICUNT tools through the standardized Model Context Protocol.
+
+### 7.1 OICUNT MCP Server Boundary & Cardinal Execution Rule
+
+```
+External MCP Client (e.g. IDE / Claude Desktop)
+        │
+        │ 1. MCP JSON-RPC 2.0 (Streamable HTTP)
+        ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│               OICUNT MCP Server Gateway (services/mcp)                 │
+│                                                                        │
+│   • Wire Protocol Framing & Streamable HTTP Transport                  │
+│   • Perimeter Authentication Termination & Tenant Context Binding      │
+│   • Ephemeral Session Management (`Mcp-Session-Id`)                    │
+│   • Dynamic Tool Catalog Projection (`tools/list`)                     │
+│   • Request Cancellation & Deadline Propagation                        │
+│   • Zero Tool Execution Logic • Zero Arbitrary Code Runtimes           │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    │ 2. Delegated Execution & Discovery
+                                    │    (POST /internal/v1/tools/execute)
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                     Tools Service (services/tools)                     │
+│                                                                        │
+│   • Canonical Tool Registry (`oicunt.tool.*`)                          │
+│   • Multi-Tenant Entitlement & Actor RBAC Policy Enforcement           │
+│   • JSON Schema (draft-07) Input & Output Validation                   │
+│   • Cryptographic Ed25519 Confirmation Token Verification              │
+│   • Sandboxed Execution, SSRF Firewall & Scrubbed Audit Logging        │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+> [!IMPORTANT]
+> **Cardinal Gateway Rule**:  
+> The OICUNT MCP Server is **strictly an interoperability and protocol boundary**.  
+> The MCP Server **never executes tool code directly**, never implements internal sandboxes, never bypasses Tools authorization, and never accesses tool implementations.  
+> **All capability discovery and execution is delegated strictly to the internal Tools Service (`services/tools`)**.
+
+---
+
+### 7.2 Primary Transport & Wire Lifecycle: Streamable HTTP
+
+Conforming to the modern MCP specification, **Streamable HTTP** serves as the primary remote transport for external clients connecting to the OICUNT MCP Server Gateway.
+
+#### 7.2.1 Endpoint Structure
+
+- **Unified Streamable HTTP Endpoint**: `POST /mcp`
+  - Accepts standard JSON-RPC 2.0 payloads.
+  - Returns either direct JSON-RPC responses or streaming chunked HTTP responses (`Transfer-Encoding: chunked`) depending on method characteristics.
+- **Server-Sent Events (SSE) Stream Endpoint**: `GET /mcp` (or `GET /mcp/events`)
+  - Supported for clients utilizing streaming events and server-initiated notifications.
+
+#### 7.2.2 Wire Framing & Session Coordination
+
+- **Session Header**: All requests following `initialize` MUST include the standard session identification header:
+  ```http
+  Mcp-Session-Id: mcp_sess_<uuid>
+  ```
+- **Content-Type**: Requests and responses enforce `application/json` or `text/event-stream`.
+- **Keep-Alives & Latency Heartbeats**: Standard JSON-RPC `ping` requests are supported to evaluate connection health and preserve state through edge reverse proxies.
+- **Non-Core Transport Status**: WebSockets are **explicitly excluded** as a core MCP wire transport.
+
+#### 7.2.3 Server-Side Connection & Session Lifecycle
+
+```mermaid
+stateDiagram-v2
+    [*] --> Uninitialized: Client connects to POST /mcp
+    Uninitialized --> Active: Handshake ('initialize' + 'notifications/initialized')
+    Active --> Active: JSON-RPC exchanges ('tools/list', 'tools/call')
+    Active --> Idle: Inactivity window (heartbeats maintained)
+    Idle --> Active: New JSON-RPC request received
+    Active --> Terminating: Explicit disconnect or connection abort
+    Idle --> Expired: Session TTL exceeded (default: 15 min)
+    Terminating --> [*]: Abort in-flight runs & release session
+    Expired --> [*]: Evict ephemeral session state
+```
+
+---
+
+### 7.3 Phase 2 Supported Protocol Operations
+
+The Phase 2 OICUNT MCP Server Gateway implements strictly the minimal necessary operations for secure, production-grade tool consumption:
+
+| Operation                | JSON-RPC Method / Notification |     Type     | Description                                                                                                       |
+| :----------------------- | :----------------------------- | :----------: | :---------------------------------------------------------------------------------------------------------------- |
+| **Initialize Handshake** | `initialize`                   |   Request    | Negotiates protocol version (`2024-11-05`), exchanges implementation metadata, and registers client capabilities. |
+| **Initialized Notice**   | `notifications/initialized`    | Notification | External client confirms completion of local initialization.                                                      |
+| **List Tools**           | `tools/list`                   |   Request    | Enumerates approved tools permitted for the authenticated actor and tenant.                                       |
+| **Call Tool**            | `tools/call`                   |   Request    | Invokes an approved tool with arguments, delegating synchronously to `services/tools`.                            |
+| **Cancel Request**       | `notifications/cancelled`      | Notification | External client requests immediate abort of an in-flight tool call (`requestId`).                                 |
+| **Ping Probe**           | `ping`                         |   Request    | Liveness probe returning an empty result object (`{}`).                                                           |
+
+> [!NOTE]
+> **Explicit Non-Scope for Phase 2**:  
+> MCP Resources (`resources/*`) and Prompts (`prompts/*`) are **NOT** implemented in the Phase 2 Server Gateway. They remain reserved for future phases.
+
+---
+
+### 7.4 Perimeter Authentication & Identity Propagation
+
+The OICUNT MCP Server Gateway operates behind the OICUNT platform security perimeter. It adheres to strict zero-trust identity rules:
+
+```
+External MCP Client
+        │ Authorization: Bearer <client_api_key_or_token>
+        ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                      Trusted Platform Perimeter                        │
+│   • Validates client credential against Platform Auth Authority        │
+│   • Resolves authoritative tenant, user, actor, and role claims        │
+│   • Strips any untrusted client-supplied identity headers              │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ Validated Identity Context
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│               OICUNT MCP Server Gateway (services/mcp)                 │
+│   • Binds identity immutably to McpSession                             │
+│   • Injects trusted headers for internal Tools Service calls           │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ Trusted Internal Headers:
+                                    │ X-Tenant-ID, X-User-ID, X-Actor-ID,
+                                    │ X-Correlation-ID, Authorization: Bearer
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                     Tools Service (services/tools)                     │
+└────────────────────────────────────────────────────────────────────────┘
+```
+
+1. **Untrusted Client Identity Headers**: External clients are **strictly forbidden** from supplying identity headers (`X-Tenant-ID`, `X-User-ID`, `X-Actor-ID`). Any such headers arriving from external clients are discarded at the perimeter.
+2. **Authoritative Credential Validation**: Clients authenticate via standard HTTP credentials (Platform API keys or user OAuth/JWT bearer tokens). The perimeter verifies the token and resolves:
+   - `tenantId`: The customer organization / tenant boundary.
+   - `userId`: The individual human user identity.
+   - `actorId`: The principal identity for RBAC resolution.
+   - `actorRoles`: Assigned security roles (e.g. `['developer', 'operator']`).
+3. **Immutable Session Binding**: During the `initialize` handshake, the resolved identity is locked to the newly allocated `Mcp-Session-Id`. Every subsequent request bearing that session ID executes strictly under that authenticated identity.
+4. **Internal Header Propagation**: When dispatching calls downstream to the Tools Service, the MCP Server attaches trusted internal headers:
+   - `X-Tenant-ID: <session.tenantId>`
+   - `X-User-ID: <session.userId>`
+   - `X-Actor-ID: <session.actorId>`
+   - `X-Correlation-ID: <correlationId>`
+   - `X-Request-ID: <requestId>`
+   - `Authorization: Bearer <internal_service_token>`
+
+---
+
+### 7.5 Multi-Tenant Isolation & Actor Scoping
+
+Multi-tenant isolation is enforced at every layer of the MCP Server Gateway:
+
+1. **Session-Level Isolation**: Every MCP session is bound to a single authoritative `tenantId`. A session cannot bridge, switch, or inspect another tenant's boundaries.
+2. **Catalog Scoping (`tools/list`)**: When `tools/list` is called, the Gateway queries `services/tools` with the session's `tenantId` and `actorId`. Only tools actively enabled for that tenant and permitted by the actor's RBAC roles are returned.
+3. **Execution Scoping (`tools/call`)**: When `tools/call` is executed, the Gateway validates that the tool invocation is routed with the session's authoritative `tenantId`. The Tools Service independently validates tenant entitlement before execution. Cross-tenant enumeration and invocation are impossible.
+
+---
+
+### 7.6 Dynamic Tool Catalog Projection
+
+The OICUNT MCP Server does **NOT** maintain an independent authoritative tool catalog. Tools are projected dynamically from the Tools Service:
+
+```
+Tools Service (ToolDefinition)
+        ↓
+McpToolExporter / Projection Engine
+        ↓
+MCP Tool Descriptor (name, description, inputSchema)
+```
+
+1. **Dynamic Catalog Query**: On `tools/list`, the MCP Gateway queries:
+   ```http
+   GET /internal/v1/tools?tenantId={tenantId}&actorId={actorId}&format=mcp
+   ```
+2. **Projection Rules**:
+   - **Tool Name**: The canonical `toolId` (e.g. `oicunt.tool.calculator.evaluate`) is projected as the MCP tool `name`.
+   - **Description**: Projected directly from `ToolDefinition.description`.
+   - **Parameters Schema**: Projected as `inputSchema`, conforming strictly to JSON Schema (draft-07).
+3. **Cache Policy**: The Gateway may maintain a short-lived in-memory cache (TTL $\le 60\,\text{s}$) keyed by `(tenantId, actorId)` to prevent excessive internal RPCs, invalidated immediately if the platform signals tool state changes.
+
+---
+
+### 7.7 Tool Execution Delegation Pipeline & Invariants
 
 ```mermaid
 sequenceDiagram
     autonumber
-    participant ExtClient as External MCP Client (e.g. IDE)
-    participant McpServer as OICUNT MCP Server (services/mcp)
-    participant Tools as Tools Service (services/tools)
+    participant Client as External MCP Client
+    participant Gateway as OICUNT MCP Server Gateway
+    participant Tools as Tools Service
+    participant Sandbox as Tool Runtime / Sandbox
 
-    ExtClient->>McpServer: Connect & Handshake (`initialize` via Streamable HTTP)
-    McpServer->>McpServer: Authenticate Client & Verify Tenant Entitlements
-    McpServer-->>ExtClient: Handshake Response (`protocolVersion`, `capabilities`)
+    Client->>Gateway: POST /mcp { method: "tools/call", params: { name, arguments } }
+    Note over Gateway: 1. Validate session & extract tenant/actor context<br/>2. Generate correlation ID & bind AbortSignal
 
-    ExtClient->>McpServer: Request Tools (`tools/list`)
-    McpServer->>Tools: Query Tenant Catalog (`GET /internal/v1/tools?tenantId=...`)
-    Tools-->>McpServer: Permitted Canonical Tools
-    McpServer->>McpServer: Export via `McpToolExporter`
-    McpServer-->>ExtClient: Return Tools List
+    Gateway->>Tools: POST /internal/v1/tools/execute
+    Note over Tools: 3. Authorize tenant entitlement & actor RBAC<br/>4. Validate arguments against JSON Schema<br/>5. Check confirmation token requirements
 
-    ExtClient->>McpServer: Execute Tool (`tools/call`, toolName, arguments)
-    McpServer->>McpServer: Verify Tenant Scoping & Attach Correlation Headers
-    McpServer->>Tools: Execute Canonical Tool (`POST /internal/v1/tools/execute`)
-    Note over Tools: Authorize, Sandbox, Audit & Execute
-    Tools-->>McpServer: Canonical Tool Execution Output
-    McpServer-->>ExtClient: Return CallToolResult (`content: [{ type: 'text', ... }]`)
+    alt Confirmation Required & Token Missing
+        Tools-->>Gateway: 403 Forbidden { code: "CONFIRMATION_REQUIRED", challengeToken }
+        Gateway-->>Client: CallToolResult { isError: true, content: [...], _confirmationChallenge }
+    else Valid & Authorized
+        Tools->>Sandbox: Execute tool logic (sandboxed / SSRF firewall)
+        Sandbox-->>Tools: Raw execution output
+        Tools-->>Gateway: 200 OK (NormalizedToolResult)
+        Gateway-->>Client: CallToolResult { content: [{ type: "text", text: "..." }] }
+    end
 ```
 
-- **Zero Capability Bypass**: The OICUNT MCP Server **never executes tool code directly**. All executions forward to `services/tools` (`POST /internal/v1/tools/execute`).
-- **Confirmation Enforcement**: Calls requiring human confirmation return structured challenge errors to external clients unless accompanied by a valid Ed25519 confirmation token.
+#### Cardinal Execution Invariants:
+
+1. **No Code Execution in MCP**: `services/mcp` contains zero execution runtimes, child sandboxes, or command evaluators.
+2. **No Direct Tool Implementation Access**: MCP communicates with tools exclusively via the HTTP API of `services/tools`.
+3. **No Authorization Bypass**: All capability executions pass through the Tools Service authorization engine.
+4. **No Confirmation Bypass**: Any tool marked `requiresConfirmation: true` halts until a cryptographic confirmation token is presented.
+5. **No Schema Bypass**: Parameter schemas are validated by the Tools Service against formal JSON Schemas.
+6. **No Audit Bypass**: Every tool execution is durably audited in `services/tools`.
+
+---
+
+### 7.8 Human-in-the-Loop Confirmation Gating via MCP
+
+Tools performing high-impact or destructive side-effects (`requiresConfirmation: true`) cannot execute on client initiative alone without human approval.
+
+#### 7.8.1 Challenge Delivery
+
+When an external client calls a confirmation-gated tool without a valid confirmation token, the Tools Service returns a `CONFIRMATION_REQUIRED` error with a cryptographically signed `challengeToken`. The MCP Gateway surfaces this as a structured `CallToolResult`:
+
+```json
+{
+  "content": [
+    {
+      "type": "text",
+      "text": "Action requires confirmation: This tool modifies protected infrastructure. Please confirm with your approval token."
+    }
+  ],
+  "isError": true,
+  "_confirmationChallenge": {
+    "status": "confirmation_required",
+    "toolId": "oicunt.tool.database.migrate",
+    "challengeToken": "chlg_ed25519_9f82b7c4a1e...",
+    "expiresAt": "2026-10-07T12:30:00Z"
+  }
+}
+```
+
+#### 7.8.2 Approval Resumption
+
+1. The human user reviews and approves the operation in the client UI or OICUNT console.
+2. An Ed25519-signed `confirmationToken` is issued.
+3. The client re-submits `tools/call`, providing the token in `arguments._confirmationToken` or request metadata.
+4. The MCP Gateway extracts the token and forwards it in `ToolExecutionRequest.confirmationToken`.
+5. The Tools Service verifies the Ed25519 signature against its verification key, checks token expiration, and proceeds with execution.
+6. The MCP Gateway remains strictly a transport for the challenge and token; **Tools Service remains the sole confirmation signing and verification authority**.
+
+---
+
+### 7.9 Bidirectional Error Normalization
+
+Errors are normalized across the JSON-RPC wire boundary while preventing internal security leaks:
+
+| OICUNT / Tools Error     | HTTP Status | MCP Wire Mapping                                      | MCP Representation                                   |
+| :----------------------- | :---------: | :---------------------------------------------------- | :--------------------------------------------------- |
+| `INVALID_TOOL_ARGUMENTS` |     400     | JSON-RPC `-32602` (Invalid params) or `isError: true` | Validation error message describing offending fields |
+| `TOOL_NOT_FOUND`         |     404     | JSON-RPC `-32601` (Method not found)                  | `"Tool not found in tenant catalog"`                 |
+| `PERMISSION_DENIED`      |     403     | JSON-RPC `-32003` (Unauthorized) or `isError: true`   | `"Unauthorized: actor lacks required role"`          |
+| `CONFIRMATION_REQUIRED`  |     403     | `CallToolResult` with `isError: true`                 | Structured confirmation challenge payload            |
+| `DEADLINE_EXCEEDED`      |     504     | JSON-RPC `-32008` (Timeout) or `isError: true`        | `"Execution exceeded monotonic deadline"`            |
+| `REQUEST_CANCELLED`      |     499     | JSON-RPC `-32000` (Cancelled)                         | `"Execution cancelled by caller"`                    |
+| `TOOL_RATE_LIMITED`      |     429     | JSON-RPC `-32029` (Rate limited)                      | `"Rate limit exceeded; retry after backoff"`         |
+| `TOOL_EXECUTION_FAILED`  |     502     | `CallToolResult` with `isError: true`                 | Sanitized tool execution failure summary             |
+| `INTERNAL_TOOL_ERROR`    |     500     | JSON-RPC `-32603` (Internal error)                    | Generic sanitized internal error message             |
+
+#### Information Leakage Protection:
+
+- Internal database connection errors, stack traces, hostnames, and internal IP addresses are **never** returned to external MCP clients.
+- Error payloads are scrubbed to return actionable, safe diagnostic messages.
+
+---
+
+### 7.10 Cancellation, Deadlines & Side-Effect Safety
+
+#### 7.10.1 Cancellation Propagation
+
+- When an external client sends `notifications/cancelled` with `requestId`, the MCP Gateway matches the active in-flight request.
+- The Gateway signals the attached `AbortController`, aborting the downstream HTTP request to the Tools Service.
+- The Tools Service terminates sandboxed execution and aborts network operations promptly.
+
+#### 7.10.2 Monotonic Deadlines
+
+- Each request enforces a strict maximum execution deadline (default: 30 seconds).
+- The deadline is propagated to the Tools Service via the `X-Deadline-At` header.
+- If the deadline expires before completion, the execution is terminated immediately.
+
+#### 7.10.3 Disconnect Handling
+
+- If an external client disconnects or the TCP socket drops mid-flight, all active executions tied to that request or session are immediately aborted.
+
+#### 7.10.4 Side-Effect Safety & Retry Prohibitions
+
+> [!CAUTION]
+> **Cardinal Side-Effect Rule**:  
+> The OICUNT MCP Server Gateway **NEVER automatically retries failed or dropped tool calls that possess side effects (`hasSideEffects: true`)**.  
+> If a network disconnect occurs during a mutating tool call, the Gateway reports the disconnect failure without re-dispatching the operation.
+
+---
+
+### 7.11 Ephemeral Session Management
+
+Session state in the MCP Server Gateway is strictly ephemeral:
+
+```typescript
+export interface McpServerGatewaySession {
+  readonly sessionId: string;
+  readonly tenantId: string;
+  readonly userId: string;
+  readonly actorId: string;
+  readonly roles: readonly string[];
+  readonly clientInfo: {
+    readonly name: string;
+    readonly version: string;
+  };
+  readonly connectedAt: string;
+  lastActivityAt: string;
+}
+```
+
+1. **Storage Location**: Sessions reside strictly in **memory** within `services/mcp`. No session rows are persisted to PostgreSQL.
+2. **Inactivity Expiration**: Sessions with no activity for 15 minutes (`900_000` ms) are automatically evicted.
+3. **Maximum Session Lifetime**: Hard cap of 24 hours per session, requiring periodic client re-handshake.
+4. **Multiplexed Requests**: Multiple concurrent JSON-RPC requests within the same session are supported concurrently, each isolated with its own request ID and cancellation signal.
+5. **Zero Execution History in MCP**: Execution logs and audit trails are durably owned exclusively by `services/tools`. MCP retains zero durable execution records.
+
+---
+
+### 7.12 Gateway Security Posture & Guardrails
+
+1. **Strict Perimeter Authentication**: Unauthenticated requests are rejected with `401 Unauthorized` before reaching protocol handlers.
+2. **Payload Size Guardrails**: HTTP request bodies are capped at 2 MB. Tool parameter nesting depth is capped at 10 levels.
+3. **Rate Limiting Perimeter**: Enforces per-tenant and per-session rate limits to protect internal tool backends from denial-of-service.
+4. **Secret & Credential Masking**: Internal service tokens, database passwords, and API keys are never serialized in responses, logs, or error payloads.
+5. **Zero Remote Code Execution (RCE)**: The Gateway contains no interpreters, eval loops, or shell execution mechanisms.
+
+---
+
+### 7.13 Observability & Telemetry Standards
+
+The Gateway emits telemetry adhering to platform OpenTelemetry and logging standards:
+
+1. **Metrics**:
+   - `mcp.gateway.sessions.active`: Active connected external sessions gauge.
+   - `mcp.gateway.requests.total`: Counter by method (`initialize`, `tools/list`, `tools/call`) and status.
+   - `mcp.gateway.latency_ms`: Histogram of RPC request latency.
+   - `mcp.gateway.tool_executions.total`: Counter by `toolId`, `tenantId`, and result status.
+   - `mcp.gateway.cancellations.total`: Counter of client-initiated cancellations.
+2. **Distributed Tracing**:
+   - Initiates W3C trace spans for incoming MCP requests (`mcp.server.handle_request`).
+   - Propagates `traceparent` and correlation IDs downstream to the Tools Service.
+3. **Sanitized Structured Logging**:
+   - Logs session lifecycles, RPC methods, and execution durations.
+   - Parameter arguments and tool outputs are **never** logged in cleartext to prevent PII and credential leakage.
+
+---
+
+### 7.14 Future Boundaries (Explicit Non-Scope for Phase 2)
+
+The following capabilities are explicitly deferred to future milestones and MUST NOT be included in Phase 2:
+
+1. **MCP Resources Boundary**: Exposing platform documents, conversation memory, or knowledge bases as MCP resources (`resources/*`).
+2. **MCP Prompts Boundary**: Exposing platform prompt templates as MCP prompts (`prompts/*`).
+3. **Dynamic Resource & Tool Subscriptions**: Server-initiated push notifications (`resources/subscribe`, `tools/list_changed`).
+4. **Public Developer Self-Service Portal**: Web portal for external developers to self-provision API keys.
+5. **OAuth 2.0 PKCE Server**: Full third-party OAuth 2.0 authorization server integration.
+6. **MCP Tool Marketplace / Registry**: Public marketplace for third-party tool discovery.
+7. **Alternative Remote Transports**: WebSockets, gRPC, or custom socket transports.
 
 ---
 
@@ -378,9 +734,10 @@ graph TD
 
 ### 8.1 Tools Service Boundary
 
-- The Tools Service is the sole runtime capability boundary.
-- MCP tools are represented as `ToolDefinition` entries with `source: 'mcp'`.
-- Execution dispatches via [`McpToolAdapter`](file:///c:/CodeBase/OICUNT/ai-platform/services/tools/src/infrastructure/adapters/mcp-tool.adapter.ts) into the MCP subsystem's `McpToolCaller` interface.
+- **The Sole Capability Boundary**: The Tools Service is the platform's singular capability catalog and execution runtime in both directions.
+- **Direction A (Inbound Consumption)**: External MCP tools are normalized and registered in `services/tools` under `source: 'mcp'`. When an internal agent or orchestrator executes one of these tools, the invocation routes through the Tools Service pipeline and dispatches via [`McpToolAdapter`](file:///c:/CodeBase/OICUNT/ai-platform/services/tools/src/infrastructure/adapters/mcp-tool.adapter.ts) into the MCP subsystem's `McpToolCaller` interface.
+- **Direction B (Outbound Exposure)**: External MCP clients connect to the OICUNT MCP Server Gateway. When a client invokes an OICUNT tool via `tools/call`, the MCP Gateway delegates execution directly to the Tools Service (`POST /internal/v1/tools/execute`). The Tools Service evaluates tenant entitlements, validates JSON Schemas, verifies cryptographic Ed25519 confirmation tokens, executes the tool within its sandboxed runtime, and durably records audit logs.
+- **Zero Capability Bypass**: Neither direction ever bypasses the Tools Service. Neither direction ever executes arbitrary code in `services/mcp`.
 
 ### 8.2 AI Orchestrator & Autonomous Agents Boundary
 
@@ -482,11 +839,19 @@ Any future implementation of the MCP subsystem MUST satisfy all invariants below
 - [ ] All external tool IDs follow canonical naming: `oicunt.tool.mcp.<server_id>.<tool_name>`.
 - [ ] JSON Schema validation (draft-07 / 2020-12) is mandatory for all ingested and exported tool schemas.
 - [ ] External MCP endpoints are strictly validated against SSRF protection policies (blocking private and loopback IPs).
-- [ ] Supervised `stdio` child processes run unprivileged with memory caps and strict signal termination.
-- [ ] Multi-tenant isolation is enforced for all server registrations and client sessions.
+- [ ] Multi-tenant isolation is enforced for all external server registrations and inbound client sessions.
 - [ ] Credentials for external MCP servers are encrypted at rest and never exposed in logs or traces.
-- [ ] Side-effecting tools (`hasSideEffects: true`) are **never** automatically retried across connection failures.
-- [ ] Upstream client cancellations (`AbortSignal`) immediately emit `notifications/cancelled` to external servers.
-- [ ] MCP state is partitioned: configurations and metadata caches are durable; wire connections are ephemeral.
+- [ ] Supervised `stdio` child processes run unprivileged with memory caps, executable allowlist, and strict signal termination.
+- [ ] Phase 1: Inbound tools discovered from external servers enter OICUNT exclusively through the Tools Service under `source: 'mcp'`.
+- [ ] Phase 1: Upstream client cancellations (`AbortSignal`) immediately emit `notifications/cancelled` to external MCP servers.
+- [ ] Phase 2: OICUNT MCP Server Gateway exposes capabilities over Streamable HTTP (`POST /mcp`, `Mcp-Session-Id`).
+- [ ] Phase 2: External client identity headers (`X-Tenant-ID`, `X-User-ID`, `X-Actor-ID`) are rejected at the perimeter; authoritative claims are resolved at perimeter and bound immutably to the session.
+- [ ] Phase 2: External client sessions are strictly isolated to their authenticated tenant; cross-tenant tool discovery and invocation are impossible.
+- [ ] Phase 2: The MCP Server Gateway maintains no independent tool catalog; tools are projected dynamically from the Tools Service (`GET /internal/v1/tools`).
+- [ ] Phase 2: The MCP Server Gateway never executes tool logic directly and never bypasses Tools authorization, confirmation gates, schema validation, or audit logging.
+- [ ] Phase 2: Confirmation challenges (`CONFIRMATION_REQUIRED`) are transported as structured challenges; Ed25519 verification remains owned exclusively by the Tools Service.
+- [ ] Phase 2: External client cancellations (`notifications/cancelled`) propagate downstream cancellation (`AbortSignal`) to the Tools Service.
+- [ ] Zero unsafe retries: MCP never automatically retries failed or disconnected side-effecting tool calls in either direction.
+- [ ] MCP state is partitioned: configurations and metadata caches are durable; wire connections and client sessions are strictly ephemeral (in-memory only).
 - [ ] Tool execution histories and audit records are owned strictly by the Tools Service, never duplicated in MCP.
 - [ ] Standard `/health/liveness` and `/health/readiness` probes are exposed.

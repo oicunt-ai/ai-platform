@@ -2,8 +2,10 @@ import { createServer, type Server } from 'node:http';
 import { loadMcpConfig, type McpConfig } from './config.js';
 import type {
   McpClientRuntimePort,
+  McpGatewaySessionStorePort,
   McpServerRepositoryPort,
   McpTransportFactoryPort,
+  PerimeterAuthPort,
   SecretStorePort,
   ToolsServicePort,
 } from './application/ports/index.js';
@@ -14,19 +16,28 @@ import {
   DiscoverCapabilitiesUseCase,
   ExecuteToolUseCase,
   DisconnectServerUseCase,
+  ServerGatewayUseCase,
 } from './application/use-cases/index.js';
 import { McpSecurityError } from './domain/errors.js';
 import { DatabasePool, DatabaseMigrator } from './infrastructure/database/index.js';
 import {
+  InMemoryMcpGatewaySessionStore,
   InMemoryMcpServerRepository,
   PostgresMcpServerRepository,
 } from './infrastructure/repositories/index.js';
 import { TransportFactory } from './infrastructure/transports/index.js';
 import { McpClientRuntime } from './infrastructure/runtime/index.js';
 import { HttpToolsClient, InMemoryToolsService } from './infrastructure/clients/index.js';
-import { InMemorySecretStore } from './infrastructure/security/index.js';
+import {
+  InMemorySecretStore,
+  PlatformPerimeterAuthAdapter,
+} from './infrastructure/security/index.js';
 import { JsonLogger } from './infrastructure/logging/index.js';
-import { ServersController, ExecutionController } from './interfaces/http/controllers/index.js';
+import {
+  ServersController,
+  ExecutionController,
+  McpGatewayController,
+} from './interfaces/http/controllers/index.js';
 import { createHttpRouter } from './interfaces/http/router.js';
 
 export interface McpServiceDependencies {
@@ -38,6 +49,8 @@ export interface McpServiceDependencies {
   readonly transportFactory?: McpTransportFactoryPort | undefined;
   readonly dbPool?: DatabasePool | undefined;
   readonly logger?: JsonLogger | undefined;
+  readonly gatewaySessionStore?: McpGatewaySessionStorePort | undefined;
+  readonly perimeterAuth?: PerimeterAuthPort | undefined;
 }
 
 export class McpService {
@@ -48,6 +61,8 @@ export class McpService {
   private readonly toolsService: ToolsServicePort;
   private readonly secretStore: SecretStorePort;
   private readonly transportFactory: McpTransportFactoryPort;
+  private readonly gatewaySessionStore: McpGatewaySessionStorePort;
+  private readonly perimeterAuth: PerimeterAuthPort;
   private readonly logger: JsonLogger;
 
   private readonly registerServerUseCase: RegisterServerUseCase;
@@ -56,6 +71,8 @@ export class McpService {
   private readonly discoverCapabilitiesUseCase: DiscoverCapabilitiesUseCase;
   private readonly executeToolUseCase: ExecuteToolUseCase;
   private readonly disconnectServerUseCase: DisconnectServerUseCase;
+  private readonly serverGatewayUseCase: ServerGatewayUseCase;
+  private readonly mcpGatewayController: McpGatewayController;
 
   private readonly server: Server;
   private isRunning = false;
@@ -124,6 +141,26 @@ export class McpService {
     this.executeToolUseCase = new ExecuteToolUseCase(this.repository, this.clientRuntime);
     this.disconnectServerUseCase = new DisconnectServerUseCase(this.repository, this.clientRuntime);
 
+    this.gatewaySessionStore =
+      dependencies.gatewaySessionStore ??
+      new InMemoryMcpGatewaySessionStore({
+        inactivityTimeoutMs: this.config.serverSessionInactivityTimeoutMs,
+        hardSessionTtlMs: this.config.serverSessionMaxTtlMs,
+      });
+    this.perimeterAuth =
+      dependencies.perimeterAuth ??
+      new PlatformPerimeterAuthAdapter({
+        internalServiceToken: this.config.internalToken,
+      });
+    this.serverGatewayUseCase = new ServerGatewayUseCase(this.toolsService);
+    this.mcpGatewayController = new McpGatewayController({
+      serverGatewayUseCase: this.serverGatewayUseCase,
+      sessionStore: this.gatewaySessionStore,
+      perimeterAuth: this.perimeterAuth,
+      config: this.config,
+      logger: this.logger,
+    });
+
     const serversController = new ServersController(
       this.registerServerUseCase,
       this.getServerUseCase,
@@ -136,6 +173,7 @@ export class McpService {
     const router = createHttpRouter({
       serversController,
       executionController,
+      mcpGatewayController: this.mcpGatewayController,
       dbPool: this.dbPool,
       internalToken: this.config.internalToken,
       logger: this.logger,
@@ -226,5 +264,13 @@ export class McpService {
 
   public getDisconnectServerUseCase(): DisconnectServerUseCase {
     return this.disconnectServerUseCase;
+  }
+
+  public getGatewaySessionStore(): McpGatewaySessionStorePort {
+    return this.gatewaySessionStore;
+  }
+
+  public getServerGatewayUseCase(): ServerGatewayUseCase {
+    return this.serverGatewayUseCase;
   }
 }
