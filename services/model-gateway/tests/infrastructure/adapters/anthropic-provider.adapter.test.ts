@@ -8,7 +8,6 @@ import {
   ProviderAuthenticationError,
   RateLimitExceededError,
   RequestCancelledError,
-  UnsupportedCapabilityError,
 } from '../../../src/domain/errors.js';
 import { AnthropicProviderAdapter } from '../../../src/infrastructure/adapters/anthropic/anthropic-provider.adapter.js';
 
@@ -328,16 +327,49 @@ describe('AnthropicProviderAdapter', () => {
     await expect(adapter.executeUnary(request)).rejects.toThrow(RequestCancelledError);
   });
 
-  it('throws UnsupportedCapabilityError for streaming in Step 3', async () => {
+  it('streams tokens and finish event from Anthropic SSE response', async () => {
+    const sseChunks = [
+      'event: message_start\ndata: {"type":"message_start","message":{"id":"msg_1","type":"message","role":"assistant","content":[],"model":"claude-3-5-sonnet-20241022","stop_reason":null,"stop_sequence":null,"usage":{"input_tokens":10,"output_tokens":0}}}\n\n',
+      'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":"Hello"}}\n\n',
+      'event: content_block_delta\ndata: {"type":"content_block_delta","index":0,"delta":{"type":"text_delta","text":" world"}}\n\n',
+      'event: message_delta\ndata: {"type":"message_delta","delta":{"stop_reason":"end_turn","stop_sequence":null},"usage":{"output_tokens":5}}\n\n',
+      'event: message_stop\ndata: {"type":"message_stop"}\n\n',
+    ];
+
+    const sseStream = new ReadableStream({
+      start(controller) {
+        for (const chunk of sseChunks) {
+          controller.enqueue(new TextEncoder().encode(chunk));
+        }
+        controller.close();
+      },
+    });
+
+    globalThis.fetch = vi.fn().mockResolvedValue(
+      new Response(sseStream, {
+        status: 200,
+        headers: { 'Content-Type': 'text/event-stream' },
+      }),
+    );
+
     const adapter = new AnthropicProviderAdapter({ apiKey: 'sk-ant-test' });
     const request = createRequest();
 
-    const stream = adapter.executeStream(request);
-    await expect(async () => {
-      for await (const _ of stream) {
-        // should throw immediately
-      }
-    }).rejects.toThrow(UnsupportedCapabilityError);
+    const events: any[] = [];
+    for await (const event of adapter.executeStream(request)) {
+      events.push(event);
+    }
+
+    expect(events).toHaveLength(3);
+    expect(events[0]).toEqual({ event: 'token', data: { delta: 'Hello' } });
+    expect(events[1]).toEqual({ event: 'token', data: { delta: ' world' } });
+    expect(events[2]).toEqual({
+      event: 'finish',
+      data: {
+        finishReason: 'stop',
+        usage: { promptTokens: 10, completionTokens: 5, totalTokens: 15 },
+      },
+    });
   });
 
   it('reports healthy when API key is configured', async () => {

@@ -26,7 +26,7 @@ export function createRealModelDefinition(): CanonicalModel {
     version: 'v1.0.0',
     modalities: ['text', 'image'],
     capabilities: {
-      streaming: false, // Step 3 scope: synchronous unary completion
+      streaming: true,
       toolCalling: true,
       structuredOutputs: true,
       reasoning: true,
@@ -56,7 +56,7 @@ export function createRealModelDefinition(): CanonicalModel {
     upstreamModelId: 'claude-3-5-sonnet-20241022',
     priority: 1,
     weight: 100,
-    supportsStreaming: false,
+    supportsStreaming: true,
     status: 'available',
   });
 

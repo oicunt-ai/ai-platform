@@ -66,6 +66,7 @@ export interface AnthropicMessagesRequest {
   readonly top_k?: number | undefined;
   readonly stop_sequences?: readonly string[] | undefined;
   readonly tools?: readonly AnthropicToolParam[] | undefined;
+  readonly stream?: boolean | undefined;
 }
 
 export interface AnthropicUsage {

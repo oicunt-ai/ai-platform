@@ -14,7 +14,6 @@ import {
   ModelUnavailableError,
   ProviderAuthenticationError,
   RequestCancelledError,
-  UnsupportedCapabilityError,
 } from '../../../domain/errors.js';
 import { mapAnthropicError } from './anthropic-error.mapper.js';
 import type {
@@ -181,17 +180,238 @@ export class AnthropicProviderAdapter implements IProviderAdapter {
     return this.normalizeResponse(anthropicData, request, latencyMs);
   }
 
-  /**
-   * Streaming is deferred to subsequent milestones.
-   */
-  // eslint-disable-next-line require-yield
   public async *executeStream(request: ProviderExecutionRequest): AsyncIterable<StreamEvent> {
-    throw new UnsupportedCapabilityError(
-      request.payload.canonicalModelId,
-      'streaming',
-      request.correlationId,
-      request.target.targetId,
-    );
+    if (request.cancellationSignal.aborted) {
+      throw new RequestCancelledError(request.payload.canonicalModelId, request.correlationId);
+    }
+
+    // 1. Resolve Provider Credentials
+    const apiKey = (request.target.adapterOptions?.['apiKey'] as string | undefined) ?? this.apiKey;
+    if (!apiKey || apiKey.trim().length === 0) {
+      throw new ProviderAuthenticationError(
+        request.payload.canonicalModelId,
+        request.correlationId,
+        request.target.targetId,
+      );
+    }
+
+    const baseUrl =
+      (request.target.adapterOptions?.['baseUrl'] as string | undefined) ?? this.baseUrl;
+
+    // 2. Prepare System Prompt & Chat Messages
+    let systemPrompt: string | undefined;
+    const anthropicMessages: AnthropicMessageParam[] = [];
+
+    for (const msg of request.payload.messages) {
+      if (msg.role === 'system') {
+        const text = this.extractMessageText(msg);
+        systemPrompt = systemPrompt ? `${systemPrompt}\n\n${text}` : text;
+      } else if (msg.role === 'user' || msg.role === 'assistant') {
+        anthropicMessages.push(this.mapMessageToAnthropic(msg));
+      }
+    }
+
+    if (anthropicMessages.length === 0) {
+      anthropicMessages.push({
+        role: 'user',
+        content: [{ type: 'text', text: '' }],
+      });
+    }
+
+    // 3. Resolve Execution Hyperparameters
+    const maxTokens =
+      request.payload.parameters?.maxTokens ?? request.payload.limits.maxOutputTokens ?? 4096;
+    const temperature = request.payload.parameters?.temperature;
+    const topP = request.payload.parameters?.topP;
+
+    const reqBody: AnthropicMessagesRequest = {
+      model: request.target.upstreamModelId,
+      messages: anthropicMessages,
+      max_tokens: maxTokens,
+      ...(systemPrompt ? { system: systemPrompt } : {}),
+      ...(temperature !== undefined ? { temperature } : {}),
+      ...(topP !== undefined ? { top_p: topP } : {}),
+      stream: true,
+    };
+
+    // 4. Dispatch Request to Anthropic Messages API
+    let response: Response;
+    try {
+      response = await fetch(`${baseUrl}/v1/messages`, {
+        method: 'POST',
+        headers: {
+          'x-api-key': apiKey,
+          'anthropic-version': this.anthropicVersion,
+          'content-type': 'application/json',
+          accept: 'text/event-stream',
+        },
+        body: JSON.stringify(reqBody),
+        signal: request.cancellationSignal,
+      });
+    } catch (err: unknown) {
+      if (request.cancellationSignal.aborted) {
+        throw new RequestCancelledError(request.payload.canonicalModelId, request.correlationId);
+      }
+      throw new ModelUnavailableError(
+        request.payload.canonicalModelId,
+        request.correlationId,
+        request.target.targetId,
+      );
+    }
+
+    if (!response.ok) {
+      let errorBody: AnthropicErrorResponse | string | undefined;
+      try {
+        errorBody = (await response.json()) as AnthropicErrorResponse;
+      } catch {
+        try {
+          errorBody = await response.text();
+        } catch {
+          // Ignore parse failure
+        }
+      }
+
+      throw mapAnthropicError({
+        status: response.status,
+        errorBody,
+        canonicalModelId: request.payload.canonicalModelId,
+        correlationId: request.correlationId,
+        targetId: request.target.targetId,
+      });
+    }
+
+    if (!response.body) {
+      throw new ModelUnavailableError(
+        request.payload.canonicalModelId,
+        request.correlationId,
+        request.target.targetId,
+      );
+    }
+
+    // 5. Parse Anthropic SSE stream and yield normalized StreamEvents
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder('utf-8');
+    let buffer = '';
+    let promptTokens = 0;
+    let completionTokens = 0;
+    let stopReason: AnthropicStopReason | null = null;
+    let finished = false;
+
+    try {
+      while (true) {
+        if (request.cancellationSignal.aborted) {
+          throw new RequestCancelledError(request.payload.canonicalModelId, request.correlationId);
+        }
+
+        const { done, value } = await reader.read();
+        if (done) {
+          break;
+        }
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? '';
+
+        let currentEvent = '';
+
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (!trimmed) {
+            currentEvent = '';
+            continue;
+          }
+
+          if (trimmed.startsWith('event:')) {
+            currentEvent = trimmed.slice(6).trim();
+          } else if (trimmed.startsWith('data:')) {
+            const dataStr = trimmed.slice(5).trim();
+            if (!dataStr || dataStr === '[DONE]') {
+              continue;
+            }
+
+            let parsed: any;
+            try {
+              parsed = JSON.parse(dataStr);
+            } catch {
+              continue;
+            }
+
+            const eventType = currentEvent || parsed.type;
+
+            if (eventType === 'message_start' && parsed.message) {
+              promptTokens = parsed.message.usage?.input_tokens ?? 0;
+            } else if (eventType === 'content_block_delta' && parsed.delta) {
+              if (parsed.delta.type === 'text_delta' && typeof parsed.delta.text === 'string') {
+                yield {
+                  event: 'token',
+                  data: { delta: parsed.delta.text },
+                };
+              } else if (
+                parsed.delta.type === 'thinking_delta' &&
+                typeof parsed.delta.thinking === 'string'
+              ) {
+                yield {
+                  event: 'thinking',
+                  data: { delta: parsed.delta.thinking },
+                };
+              }
+            } else if (eventType === 'message_delta') {
+              if (parsed.delta?.stop_reason) {
+                stopReason = parsed.delta.stop_reason;
+              }
+              if (parsed.usage?.output_tokens !== undefined) {
+                completionTokens = parsed.usage.output_tokens;
+              }
+            } else if (eventType === 'message_stop') {
+              finished = true;
+              yield {
+                event: 'finish',
+                data: {
+                  finishReason: this.mapFinishReason(stopReason),
+                  usage: {
+                    promptTokens,
+                    completionTokens,
+                    totalTokens: promptTokens + completionTokens,
+                  },
+                },
+              };
+            } else if (eventType === 'error') {
+              yield {
+                event: 'error',
+                data: {
+                  code: 'PROVIDER_ERROR',
+                  message: parsed.error?.message ?? 'Anthropic stream error',
+                },
+              };
+            }
+          }
+        }
+      }
+
+      if (!finished) {
+        yield {
+          event: 'finish',
+          data: {
+            finishReason: this.mapFinishReason(stopReason),
+            usage: {
+              promptTokens,
+              completionTokens,
+              totalTokens: promptTokens + completionTokens,
+            },
+          },
+        };
+      }
+    } catch (err: unknown) {
+      if (
+        request.cancellationSignal.aborted ||
+        (err instanceof Error && err.name === 'AbortError')
+      ) {
+        throw new RequestCancelledError(request.payload.canonicalModelId, request.correlationId);
+      }
+      throw err;
+    } finally {
+      reader.releaseLock();
+    }
   }
 
   /**
