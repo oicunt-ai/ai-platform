@@ -3,12 +3,21 @@ import { InferenceService } from '../../src/service.js';
 import { loadInferenceConfig } from '../../src/config.js';
 import { FakeModelGateway } from '../test-doubles/fake-model-gateway.js';
 import type { InferenceExecutionResponse } from '../../src/application/dtos/inference-result.dto.js';
+import { createInternalServiceToken } from '../../src/infrastructure/security/internal-service-token.js';
 
 describe('HTTP Interfaces - Inference API', () => {
   let service: InferenceService;
   let fakeGateway: FakeModelGateway;
   let baseUrl: string;
   const internalToken = 'test-secret-token';
+
+  function createTestToken(serviceName = 'ai-orchestrator'): string {
+    return createInternalServiceToken({
+      serviceName,
+      audience: 'inference',
+      secret: internalToken,
+    });
+  }
 
   beforeEach(async () => {
     fakeGateway = new FakeModelGateway();
@@ -49,7 +58,7 @@ describe('HTTP Interfaces - Inference API', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${internalToken}`,
+        Authorization: `Bearer ${createTestToken()}`,
         'X-Service-Name': 'ai-orchestrator',
         'X-Correlation-Id': 'corr_api_test_01',
       },
@@ -72,7 +81,7 @@ describe('HTTP Interfaces - Inference API', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${internalToken}`,
+        Authorization: `Bearer ${createTestToken()}`,
         'X-Service-Name': 'ai-orchestrator',
       },
       body: JSON.stringify({
@@ -111,7 +120,7 @@ describe('HTTP Interfaces - Inference API', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${internalToken}`,
+        Authorization: `Bearer ${createTestToken('unauthorized-external-app')}`,
         'X-Service-Name': 'unauthorized-external-app',
       },
       body: JSON.stringify(validPayload),
@@ -128,7 +137,7 @@ describe('HTTP Interfaces - Inference API', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${internalToken}`,
+        Authorization: `Bearer ${createTestToken()}`,
         'X-Service-Name': 'ai-orchestrator',
       },
       body: JSON.stringify({
@@ -146,6 +155,10 @@ describe('HTTP Interfaces - Inference API', () => {
   it('returns 405 Method Not Allowed for GET on execute endpoint', async () => {
     const res = await fetch(`${baseUrl}/internal/v1/inference/execute`, {
       method: 'GET',
+      headers: {
+        Authorization: `Bearer ${createTestToken()}`,
+        'X-Service-Name': 'ai-orchestrator',
+      },
     });
 
     expect(res.status).toBe(405);

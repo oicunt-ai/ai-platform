@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { validateServiceIdentity } from './auth.js';
+import { authenticateInternalRequest } from './auth.js';
 import { extractRequestContext } from './context.js';
 import { sendLivenessResponse, sendReadinessResponse } from './health.js';
 import type { DispatchController } from './controllers/dispatch.controller.js';
@@ -10,6 +10,8 @@ export interface RouterDependencies {
   readonly version: string;
   readonly isReady: () => boolean;
   readonly allowedServiceIdentities: readonly string[];
+  readonly internalToken?: string | undefined;
+  readonly environment?: string | undefined;
 }
 
 export function createHttpRouter(
@@ -32,13 +34,17 @@ export function createHttpRouter(
       return;
     }
 
-    // 2. Protected Internal Routes - Service Identity Verification
+    // 2. Protected Internal Routes - Service Identity & Token Verification
     if (pathname.startsWith('/internal/')) {
-      if (
-        deps.allowedServiceIdentities.length > 0 &&
-        !validateServiceIdentity(context, deps.allowedServiceIdentities)
-      ) {
-        res.writeHead(403, {
+      const authResult = authenticateInternalRequest(req, {
+        secret: deps.internalToken,
+        expectedAudience: 'model-gateway',
+        allowedServiceIdentities: deps.allowedServiceIdentities,
+        isProduction: deps.environment === 'production',
+      });
+
+      if (!authResult.authenticated) {
+        res.writeHead(authResult.statusCode, {
           'Content-Type': 'application/json; charset=utf-8',
           'X-Request-ID': context.requestId,
           'X-Correlation-ID': context.correlationId,
@@ -47,13 +53,15 @@ export function createHttpRouter(
           JSON.stringify({
             success: false,
             error: {
-              code: 'FORBIDDEN_SERVICE_IDENTITY',
-              message: `Service '${context.serviceName ?? 'unknown'}' is not authorized to invoke Model Gateway`,
+              code: authResult.errorCode,
+              message: authResult.message,
             },
           }),
         );
         return;
       }
+
+      (context as { serviceName?: string }).serviceName = authResult.serviceName;
     }
 
     // 3. Dispatch Route

@@ -4,6 +4,7 @@ import { loadAiOrchestratorConfig } from '../../src/config.js';
 import { FakeModelRegistry } from '../test-doubles/fake-model-registry.js';
 import { FakeInference } from '../test-doubles/fake-inference.js';
 import { FakeMemory } from '../test-doubles/fake-memory.js';
+import { createInternalServiceToken } from '../../src/infrastructure/security/internal-service-token.js';
 
 interface TestChatResponse {
   readonly success: boolean;
@@ -26,6 +27,14 @@ describe('HTTP Interfaces - Chat API', () => {
   let fakeRegistry: FakeModelRegistry;
   let fakeInference: FakeInference;
   let baseUrl: string;
+
+  function createTestToken(serviceName = 'billy-api'): string {
+    return createInternalServiceToken({
+      serviceName,
+      audience: 'ai-orchestrator',
+      secret: 'test-secret-token',
+    });
+  }
 
   beforeEach(async () => {
     fakeRegistry = new FakeModelRegistry();
@@ -60,7 +69,7 @@ describe('HTTP Interfaces - Chat API', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer test-secret-token',
+        Authorization: `Bearer ${createTestToken()}`,
         'X-Service-Name': 'billy-api',
         'X-Correlation-ID': 'corr-abc-123',
         'X-User-ID': 'usr_999',
@@ -85,7 +94,7 @@ describe('HTTP Interfaces - Chat API', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer test-secret-token',
+        Authorization: `Bearer ${createTestToken()}`,
         'X-Service-Name': 'billy-api',
       },
       body: JSON.stringify({
@@ -101,7 +110,7 @@ describe('HTTP Interfaces - Chat API', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer test-secret-token',
+        Authorization: `Bearer ${createTestToken()}`,
         'X-Service-Name': 'billy-api',
       },
       body: JSON.stringify({
@@ -117,7 +126,7 @@ describe('HTTP Interfaces - Chat API', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer test-secret-token',
+        Authorization: `Bearer ${createTestToken()}`,
         'X-Service-Name': 'billy-api',
         'Cache-Control': 'no-cache',
       },
@@ -136,7 +145,7 @@ describe('HTTP Interfaces - Chat API', () => {
       headers: {
         'Content-Type': 'application/json',
         Accept: 'text/event-stream',
-        Authorization: 'Bearer test-secret-token',
+        Authorization: `Bearer ${createTestToken()}`,
         'X-Service-Name': 'billy-api',
         'X-Correlation-ID': 'corr-stream-123',
       },
@@ -179,7 +188,7 @@ describe('HTTP Interfaces - Chat API', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer test-secret-token',
+        Authorization: `Bearer ${createTestToken('unauthorized-service')}`,
         'X-Service-Name': 'unauthorized-service',
       },
       body: JSON.stringify({
@@ -198,7 +207,7 @@ describe('HTTP Interfaces - Chat API', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer test-secret-token',
+        Authorization: `Bearer ${createTestToken()}`,
         'X-Service-Name': 'billy-api',
       },
       body: JSON.stringify({
@@ -216,7 +225,7 @@ describe('HTTP Interfaces - Chat API', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: 'Bearer test-secret-token',
+        Authorization: `Bearer ${createTestToken()}`,
         'X-Service-Name': 'billy-api',
       },
       body: JSON.stringify({
@@ -234,7 +243,7 @@ describe('HTTP Interfaces - Chat API', () => {
     const response = await fetch(`${baseUrl}/internal/v1/orchestrator/chat`, {
       method: 'GET',
       headers: {
-        Authorization: 'Bearer test-secret-token',
+        Authorization: `Bearer ${createTestToken()}`,
         'X-Service-Name': 'billy-api',
       },
     });

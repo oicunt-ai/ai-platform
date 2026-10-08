@@ -1,5 +1,5 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
-import { validateInternalToken, validateServiceIdentity } from './auth.js';
+import { authenticateInternalRequest } from './auth.js';
 import { extractRequestContext } from './context.js';
 import { sendLivenessResponse, sendReadinessResponse } from './health.js';
 import type { ChatController } from './controllers/chat.controller.js';
@@ -13,6 +13,7 @@ export interface RouterDependencies {
     Promise<Record<string, 'ok' | 'failed'>> | Record<string, 'ok' | 'failed'>;
   readonly allowedServiceIdentities: readonly string[];
   readonly internalToken?: string | undefined;
+  readonly environment?: string | undefined;
 }
 
 export function createHttpRouter(
@@ -47,8 +48,15 @@ export function createHttpRouter(
 
     // 2. Protected Internal Routes - Authentication & Service Whitelisting
     if (pathname.startsWith('/internal/')) {
-      if (deps.internalToken && !validateInternalToken(req, deps.internalToken)) {
-        res.writeHead(401, {
+      const authResult = authenticateInternalRequest(req, {
+        secret: deps.internalToken,
+        expectedAudience: 'ai-orchestrator',
+        allowedServiceIdentities: deps.allowedServiceIdentities,
+        isProduction: deps.environment === 'production',
+      });
+
+      if (!authResult.authenticated) {
+        res.writeHead(authResult.statusCode, {
           'Content-Type': 'application/json; charset=utf-8',
           'X-Request-ID': context.requestId,
           'X-Correlation-ID': context.correlationId,
@@ -57,8 +65,8 @@ export function createHttpRouter(
           JSON.stringify({
             success: false,
             error: {
-              code: 'AUTHENTICATION_ERROR',
-              message: 'Invalid or missing internal service token',
+              code: authResult.errorCode,
+              message: authResult.message,
             },
             meta: {
               requestId: context.requestId,
@@ -70,31 +78,7 @@ export function createHttpRouter(
         return;
       }
 
-      if (
-        deps.allowedServiceIdentities.length > 0 &&
-        !validateServiceIdentity(context, deps.allowedServiceIdentities)
-      ) {
-        res.writeHead(403, {
-          'Content-Type': 'application/json; charset=utf-8',
-          'X-Request-ID': context.requestId,
-          'X-Correlation-ID': context.correlationId,
-        });
-        res.end(
-          JSON.stringify({
-            success: false,
-            error: {
-              code: 'FORBIDDEN',
-              message: `Service '${context.serviceName ?? 'unknown'}' is not authorized to invoke AI Orchestrator`,
-            },
-            meta: {
-              requestId: context.requestId,
-              correlationId: context.correlationId,
-              timestamp: new Date().toISOString(),
-            },
-          }),
-        );
-        return;
-      }
+      (context as { serviceName?: string }).serviceName = authResult.serviceName;
     }
 
     // 3. Chat Route

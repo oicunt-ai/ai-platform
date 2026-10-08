@@ -140,6 +140,7 @@ export class AiOrchestratorService {
       },
       allowedServiceIdentities: this.config.allowedServiceIdentities,
       internalToken: this.config.internalToken,
+      environment: this.config.environment,
     });
 
     this.server = createServer((req, res) => {

@@ -16,6 +16,7 @@ import {
   RequestCancelledError,
   UnsupportedEffortLevelError,
 } from '../../domain/errors.js';
+import { createInternalServiceToken } from '../security/internal-service-token.js';
 
 export interface HttpInferenceClientOptions {
   readonly baseUrl: string;
@@ -214,7 +215,13 @@ export class HttpInferenceClient implements InferencePort {
       headers['X-User-ID'] = request.userId;
     }
     if (this.internalToken) {
-      headers['Authorization'] = `Bearer ${this.internalToken}`;
+      const token = createInternalServiceToken({
+        issuer: 'ai-orchestrator',
+        audience: 'inference',
+        secret: this.internalToken,
+        expiresInSeconds: 300,
+      });
+      headers['Authorization'] = `Bearer ${token}`;
     }
 
     return headers;

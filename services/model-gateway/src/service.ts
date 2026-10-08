@@ -92,6 +92,8 @@ export class ModelGatewayService {
       version: this.config.version,
       isReady: () => this.ready,
       allowedServiceIdentities: this.config.allowedServiceIdentities,
+      internalToken: this.config.internalToken,
+      environment: this.config.environment,
     });
 
     this.server = createServer((req, res) => {

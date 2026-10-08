@@ -1,6 +1,6 @@
 import type { IncomingMessage, ServerResponse } from 'node:http';
 import { AuthenticationError, ForbiddenError } from '../../domain/errors.js';
-import { validateInternalToken, validateServiceIdentity } from './auth.js';
+import { authenticateInternalRequest } from './auth.js';
 import { extractRequestContext } from './context.js';
 import type { InferenceController } from './controllers/inference.controller.js';
 import { handleLiveness, handleReadiness, type HealthCheckOptions } from './health.js';
@@ -11,6 +11,7 @@ export interface HttpRouterDependencies {
   readonly healthOptions: HealthCheckOptions;
   readonly internalToken?: string | undefined;
   readonly allowedServiceIdentities?: readonly string[] | undefined;
+  readonly environment?: string | undefined;
 }
 
 export function createHttpRouter(deps: HttpRouterDependencies) {
@@ -41,35 +42,31 @@ export function createHttpRouter(deps: HttpRouterDependencies) {
         return;
       }
 
-      // Security Check: Internal token verification
-      if (!validateInternalToken(req, deps.internalToken)) {
-        sendErrorResponse(
-          res,
-          new AuthenticationError(
-            'Invalid or missing internal service token',
-            context.correlationId,
-          ),
-          context,
-        );
+      // Security Check: Internal token & service identity verification
+      const authResult = authenticateInternalRequest(req, {
+        secret: deps.internalToken,
+        expectedAudience: 'inference',
+        allowedServiceIdentities: deps.allowedServiceIdentities ?? [
+          'platform-api-gateway',
+          'billy-api',
+          'ai-orchestrator',
+          'ai-platform-admin',
+          'agent-runner',
+        ],
+        isProduction: deps.environment === 'production',
+      });
+
+      if (!authResult.authenticated) {
+        const error =
+          authResult.statusCode === 401
+            ? new AuthenticationError(authResult.message, context.correlationId)
+            : new ForbiddenError(authResult.message, context.correlationId);
+
+        sendErrorResponse(res, error, context);
         return;
       }
 
-      // Security Check: Whitelisted service verification
-      if (
-        deps.allowedServiceIdentities &&
-        deps.allowedServiceIdentities.length > 0 &&
-        !validateServiceIdentity(context, deps.allowedServiceIdentities)
-      ) {
-        sendErrorResponse(
-          res,
-          new ForbiddenError(
-            `Service identity '${context.serviceName ?? 'unknown'}' is not authorized to invoke Inference Service`,
-            context.correlationId,
-          ),
-          context,
-        );
-        return;
-      }
+      (context as { serviceName?: string }).serviceName = authResult.serviceName;
 
       await deps.inferenceController.handleExecute(req, res, context);
       return;

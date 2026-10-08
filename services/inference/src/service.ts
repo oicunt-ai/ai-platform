@@ -91,6 +91,7 @@ export class InferenceService {
       },
       internalToken: this.config.internalToken,
       allowedServiceIdentities: this.config.allowedServiceIdentities,
+      environment: this.config.environment,
     });
 
     this.server = createServer((req, res) => {

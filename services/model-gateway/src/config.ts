@@ -30,6 +30,7 @@ export interface ModelGatewayConfig {
   readonly circuitBreaker: CircuitBreakerOptions;
   readonly retryPolicy: RetryPolicyOptions;
   readonly anthropic?: AnthropicProviderConfig | undefined;
+  readonly internalToken?: string | undefined;
 }
 
 export function resolveEnvironment(raw?: string): Environment {
@@ -77,6 +78,10 @@ export function loadModelGatewayConfig(
     enableTelemetry,
     logLevel,
     allowedServiceIdentities: allowedServices,
+    internalToken:
+      overrides?.internalToken ??
+      process.env['INTERNAL_SERVICE_TOKEN'] ??
+      process.env['INTERNAL_SERVICE_SECRET'],
     maxBodySizeBytes: overrides?.maxBodySizeBytes ?? 1048576,
     defaultTimeoutMs: overrides?.defaultTimeoutMs ?? 120000,
     circuitBreaker: {

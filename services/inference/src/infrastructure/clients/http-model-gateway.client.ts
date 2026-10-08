@@ -5,7 +5,9 @@ import type {
 } from '../../application/ports/model-gateway.port.js';
 import {
   AllTargetsExhaustedError,
+  AuthenticationError,
   ContextWindowExceededError,
+  ForbiddenError,
   InferenceError,
   InferenceTimeoutError,
   InternalInferenceError,
@@ -14,6 +16,7 @@ import {
   RequestCancelledError,
   UnsupportedEffortLevelError,
 } from '../../domain/errors.js';
+import { createInternalServiceToken } from '../security/internal-service-token.js';
 
 export interface HttpModelGatewayClientOptions {
   readonly baseUrl: string;
@@ -179,7 +182,13 @@ export class HttpModelGatewayClient implements ModelGatewayPort {
     };
 
     if (this.internalToken) {
-      headers['Authorization'] = `Bearer ${this.internalToken}`;
+      const token = createInternalServiceToken({
+        issuer: 'inference',
+        audience: 'model-gateway',
+        secret: this.internalToken,
+        expiresInSeconds: 300,
+      });
+      headers['Authorization'] = `Bearer ${token}`;
     }
     if (payload.tenantId) {
       headers['X-Tenant-ID'] = payload.tenantId;
@@ -213,6 +222,10 @@ export class HttpModelGatewayClient implements ModelGatewayPort {
     }
 
     switch (response.status) {
+      case 401:
+        throw new AuthenticationError(errorMessage, payload.correlationId);
+      case 403:
+        throw new ForbiddenError(errorMessage, payload.correlationId);
       case 400:
         throw new InvalidRequestError(errorMessage, payload.correlationId, details);
       case 422:

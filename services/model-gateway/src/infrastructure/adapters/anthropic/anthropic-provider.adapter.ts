@@ -248,7 +248,7 @@ export class AnthropicProviderAdapter implements IProviderAdapter {
         body: JSON.stringify(reqBody),
         signal: request.cancellationSignal,
       });
-    } catch (err: unknown) {
+    } catch (_err: unknown) {
       if (request.cancellationSignal.aborted) {
         throw new RequestCancelledError(request.payload.canonicalModelId, request.correlationId);
       }

@@ -13,6 +13,7 @@ import {
   RequestCancelledError,
   UnsupportedEffortLevelError,
 } from '../../domain/errors.js';
+import { createInternalServiceToken } from '../security/internal-service-token.js';
 
 export interface HttpModelRegistryClientOptions {
   readonly baseUrl: string;
@@ -56,7 +57,13 @@ export class HttpModelRegistryClient implements ModelRegistryPort {
       headers['X-Tenant-ID'] = query.tenantId;
     }
     if (this.internalToken) {
-      headers['Authorization'] = `Bearer ${this.internalToken}`;
+      const token = createInternalServiceToken({
+        issuer: 'ai-orchestrator',
+        audience: 'model-registry',
+        secret: this.internalToken,
+        expiresInSeconds: 300,
+      });
+      headers['Authorization'] = `Bearer ${token}`;
     }
 
     const abortController = new AbortController();
