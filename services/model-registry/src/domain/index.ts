@@ -6,3 +6,4 @@ export * from './routing-policy.js';
 export * from './model-alias.js';
 export * from './audit-event.js';
 export * from './canonical-model.js';
+export * from './real-model.js';

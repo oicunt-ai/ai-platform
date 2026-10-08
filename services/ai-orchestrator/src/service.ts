@@ -11,6 +11,7 @@ import { InMemoryResolutionCache } from './infrastructure/cache/in-memory-resolu
 import { HttpModelRegistryClient } from './infrastructure/clients/http-model-registry.client.js';
 import { HttpInferenceClient } from './infrastructure/clients/http-inference.client.js';
 import { HttpMemoryClient } from './infrastructure/clients/http-memory.client.js';
+import { InMemoryMemoryClient } from './infrastructure/clients/in-memory-memory.client.js';
 import { JsonLogger } from './infrastructure/logging/logger.js';
 import { ChatController } from './interfaces/http/controllers/chat.controller.js';
 import { createHttpRouter } from './interfaces/http/router.js';
@@ -54,12 +55,16 @@ export class AiOrchestratorService {
         internalToken: this.config.internalToken,
       });
 
-    this.memory =
-      dependencies.memory ??
-      new HttpMemoryClient({
+    if (dependencies.memory) {
+      this.memory = dependencies.memory;
+    } else if (this.config.memoryBaseUrl === 'in-memory' || this.config.environment === 'test') {
+      this.memory = new InMemoryMemoryClient();
+    } else {
+      this.memory = new HttpMemoryClient({
         baseUrl: this.config.memoryBaseUrl,
         internalToken: this.config.internalToken,
       });
+    }
 
     this.resolutionCache =
       dependencies.resolutionCache ?? new InMemoryResolutionCache(this.config.cacheTtlSeconds);

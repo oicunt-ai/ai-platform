@@ -26,6 +26,7 @@ import {
 import { ResolutionController } from './interfaces/http/controllers/resolution.controller.js';
 import { CatalogController } from './interfaces/http/controllers/catalog.controller.js';
 import { createHttpRouter } from './interfaces/http/router.js';
+import { registerRealModel } from './domain/real-model.js';
 
 export interface ModelRegistryDependencies {
   readonly config?: ModelRegistryConfig | undefined;
@@ -186,6 +187,10 @@ export class ModelRegistryService {
     this.server = createServer((req, res) => {
       void router(req, res);
     });
+
+    if (this.config.environment !== 'test' || this.config.autoSeedRealModel) {
+      await registerRealModel(this.modelRepository);
+    }
 
     this.ready = true;
   }

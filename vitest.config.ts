@@ -22,6 +22,14 @@ export default defineConfig({
         import.meta.dirname,
         'services/model-gateway/src/index.ts',
       ),
+      '@oicunt-ai/service-inference': resolve(
+        import.meta.dirname,
+        'services/inference/src/index.ts',
+      ),
+      '@oicunt-ai/service-ai-orchestrator': resolve(
+        import.meta.dirname,
+        'services/ai-orchestrator/src/index.ts',
+      ),
       '@oicunt-ai/service-memory': resolve(import.meta.dirname, 'services/memory/src/index.ts'),
       '@oicunt-ai/service-knowledge': resolve(
         import.meta.dirname,

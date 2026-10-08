@@ -57,7 +57,7 @@ export function loadAiOrchestratorConfig(
           .split(',')
           .map((s) => s.trim())
           .filter(Boolean)
-      : ['platform-api-gateway', 'billy-api', 'ai-platform-admin', 'agent-runner']);
+      : ['platform-api-gateway', 'api-gateway', 'billy-api', 'ai-platform-admin', 'agent-runner']);
 
   return {
     serviceName: overrides?.serviceName ?? 'ai-orchestrator',

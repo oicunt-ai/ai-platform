@@ -10,6 +10,11 @@ export interface CircuitBreakerOptions {
 
 export type RetryPolicyOptions = RetryPolicyConfig;
 
+export interface AnthropicProviderConfig {
+  readonly apiKey?: string | undefined;
+  readonly baseUrl?: string | undefined;
+}
+
 export interface ModelGatewayConfig {
   readonly serviceName: string;
   readonly environment: Environment;
@@ -24,6 +29,7 @@ export interface ModelGatewayConfig {
   readonly defaultTimeoutMs: number;
   readonly circuitBreaker: CircuitBreakerOptions;
   readonly retryPolicy: RetryPolicyOptions;
+  readonly anthropic?: AnthropicProviderConfig | undefined;
 }
 
 export function resolveEnvironment(raw?: string): Environment {
@@ -59,7 +65,7 @@ export function loadModelGatewayConfig(
     overrides?.allowedServiceIdentities ??
     (process.env['ALLOWED_SERVICE_IDENTITIES']
       ? process.env['ALLOWED_SERVICE_IDENTITIES'].split(',').map((s) => s.trim())
-      : ['ai-orchestrator', 'ai-platform-admin']);
+      : ['inference', 'ai-orchestrator', 'ai-platform-admin']);
 
   return {
     serviceName: overrides?.serviceName ?? 'model-gateway',
@@ -101,6 +107,10 @@ export function loadModelGatewayConfig(
         overrides?.retryPolicy?.maxBackoffDelayMs ??
         Number.parseInt(process.env['MAX_BACKOFF_DELAY_MS'] ?? '8000', 10),
       backoffMultiplier: overrides?.retryPolicy?.backoffMultiplier ?? 2.0,
+    },
+    anthropic: {
+      apiKey: overrides?.anthropic?.apiKey ?? process.env['ANTHROPIC_API_KEY'],
+      baseUrl: overrides?.anthropic?.baseUrl ?? process.env['ANTHROPIC_BASE_URL'],
     },
   };
 }

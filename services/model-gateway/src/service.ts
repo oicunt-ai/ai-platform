@@ -3,6 +3,7 @@ import { loadModelGatewayConfig, type ModelGatewayConfig } from './config.js';
 import type { AdapterRegistryPort } from './application/ports/adapter-registry.port.js';
 import type { CircuitBreakerStorePort } from './application/ports/circuit-breaker-store.port.js';
 import { InMemoryAdapterRegistry } from './infrastructure/adapters/in-memory-adapter-registry.js';
+import { AnthropicProviderAdapter } from './infrastructure/adapters/anthropic/index.js';
 import { InMemoryCircuitBreakerStore } from './infrastructure/circuit-breaker/in-memory-circuit-breaker-store.js';
 import { JsonLogger } from './infrastructure/logging/logger.js';
 import { DispatchModelUseCase } from './application/use-cases/dispatch-model.use-case.js';
@@ -31,7 +32,19 @@ export class ModelGatewayService {
 
   constructor(dependencies: ModelGatewayDependencies = {}) {
     this.config = dependencies.config ?? loadModelGatewayConfig();
-    this.adapterRegistry = dependencies.adapterRegistry ?? new InMemoryAdapterRegistry();
+
+    if (dependencies.adapterRegistry) {
+      this.adapterRegistry = dependencies.adapterRegistry;
+    } else {
+      const defaultRegistry = new InMemoryAdapterRegistry();
+      defaultRegistry.register(
+        new AnthropicProviderAdapter({
+          apiKey: this.config.anthropic?.apiKey,
+          baseUrl: this.config.anthropic?.baseUrl,
+        }),
+      );
+      this.adapterRegistry = defaultRegistry;
+    }
     this.circuitBreakerStore =
       dependencies.circuitBreakerStore ??
       new InMemoryCircuitBreakerStore(this.config.circuitBreaker);

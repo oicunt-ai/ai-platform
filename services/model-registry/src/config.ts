@@ -32,6 +32,7 @@ export interface ModelRegistryConfig {
   readonly allowedServiceIdentities: readonly string[];
   readonly internalAuthToken?: string | undefined;
   readonly maxBodySizeBytes: number;
+  readonly autoSeedRealModel?: boolean | undefined;
 }
 
 export function resolveEnvironment(raw?: string): Environment {
@@ -112,6 +113,8 @@ export function loadModelRegistryConfig(
     maxBodySizeBytes:
       overrides?.maxBodySizeBytes ??
       Number.parseInt(process.env['MAX_BODY_SIZE_BYTES'] ?? '1048576', 10),
+    autoSeedRealModel:
+      overrides?.autoSeedRealModel ?? process.env['AUTO_SEED_REAL_MODEL'] === 'true',
   };
 
   if (config.port < 0 || config.port > 65535) {
