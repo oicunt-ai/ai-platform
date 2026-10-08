@@ -4,23 +4,27 @@
 
 ## Architectural Role
 
-```
-BILLY (Client)
+```text
+BILLY / Client
+      ↓
+Platform API Gateway
       ↓
 AI Orchestrator
-      ↓
-Model Registry (WHAT)
-      ↓
-Model Gateway (HOW)
-      ↓
-Provider Adapter
-      ↓
-Upstream Provider (Anthropic, Bedrock, OpenAI, Gemini)
+      ├──→ Model Registry (Control-Plane Model Resolution)
+      └──→ Inference (Runtime Execution Coordination)
+              ↓
+          Model Gateway (Data-Plane Egress Boundary)
+              ↓
+          Provider Adapter (Anti-Corruption Layer)
+              ↓
+          Upstream Provider (Anthropic, Bedrock, OpenAI, Gemini)
 ```
 
 The Model Gateway encapsulates:
 
 - Single upstream network egress boundary
+- Dispatched exclusively by Inference Service (`POST /internal/v1/models/dispatch`)
+- Provider Adapters contained strictly inside the Model Gateway / provider boundary (not independent services)
 - Circuit breaker per provider target
 - Unified request execution deadline and retry/fallback budgets
 - Request cancellation via `AbortSignal`

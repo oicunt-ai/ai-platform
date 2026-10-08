@@ -8,6 +8,10 @@ Its sole responsibility is to accurately record **what happened, when it happene
 
 Usage metering is an out-of-band platform capability that strictly operates outside the runtime execution critical path.
 
+> [!NOTE]
+> **Authoritative Platform Ownership**:
+> Authoritative company-wide usage metering, durable persistence, rollups, and billing queries are owned by the **Platform** repository (`platform/services/usage/`). The AI Platform acts as an event producer reporting AI execution metrics.
+
 ## Architecture
 
 Follows the canonical OICUNT Clean / Hexagonal Architecture:

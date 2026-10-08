@@ -13,13 +13,15 @@ The **Inference Service** is the stateless inference-runtime coordination layer 
 
 ```
 Product Application (e.g. BILLY)
-  ↓ POST /internal/v1/orchestrator/chat
+  ↓ HTTPS + Bearer JWT
+Platform API Gateway (Perimeter Ingress & Auth)
+  ↓ POST /internal/v1/orchestrator/chat (Service-to-Service Auth)
 AI Orchestrator (Coordination Plane)
-  ↓ POST /internal/v1/inference/execute
+  ↓ POST /internal/v1/inference/execute (Service-to-Service Auth)
 Inference Service (Runtime Execution Layer)
-  ↓ POST /internal/v1/models/dispatch
+  ↓ POST /internal/v1/models/dispatch (Service-to-Service Auth)
 Model Gateway (Data Plane & Provider Execution)
-  ↓
+  ↓ Provider Adapter (Internal Anti-Corruption Layer)
 Upstream Providers (Anthropic / OpenAI / Google)
 ```
 

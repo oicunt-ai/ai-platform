@@ -17,40 +17,43 @@ The Model Gateway guarantees that neither client applications (BILLY) nor middle
 │                        BILLY (Client Interface)                        │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ 1. POST /api/v1/ai/completions
-                                    │    (model: 'claude-sonnet', effort: 'high')
+                                    ▼
+┌────────────────────────────────────────────────────────────────────────┐
+│                      Platform API Gateway (Perimeter)                  │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │ 2. POST /internal/v1/orchestrator/chat
                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │                            AI Orchestrator                             │
 └───────────────────┬────────────────────────────────┬───────────────────┘
                     │                                │
-                    │ 2. GET /models/resolve         │ 4. POST /models/dispatch
-                    │    (model, effort)             │    (Normalized Request +
-                    ▼                                │     Resolution Metadata)
-┌──────────────────────────────────────┐             │
-│            Model Registry            │             │
-│           (Control Plane)            │             │
-│  • Canonical Identifiers             │             │
-│  • Capabilities & Limits             │             │
-│  • Eligible Provider Targets         │             │
-│  • Routing Policies                  │             │
-└───────────────────┬──────────────────┘             │
-                    │ 3. Resolution Response         │
-                    │    (Eligible Targets, Limits)  │
-                    └────────────────────────────────┤
-                                                     ▼
+                    │ 3. GET /models/resolve         │ 4. POST /internal/v1/inference/execute
+                    │    (model, effort)             │    (InferenceExecutionRequest)
+                    ▼                                ▼
+┌──────────────────────────────────────┐  ┌──────────────────────────────┐
+│            Model Registry            │  │      Inference Service       │
+│           (Control Plane)            │  │ (Runtime Execution Lifecycle)│
+│  • Canonical Identifiers             │  │  • Normalized Ingress        │
+│  • Capabilities & Limits             │  │  • TTFT & Telemetry Tracking │
+│  • Eligible Provider Targets         │  │  • Privacy Redaction         │
+│  • Routing Policies                  │  │  • Deadline & Cancellation   │
+└──────────────────────────────────────┘  └──────────────┬───────────────┘
+                                                         │ 5. POST /internal/v1/models/dispatch
+                                                         │    (GatewayDispatchPayload)
+                                                         ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │                       Model Gateway (Data Plane)                       │
 │                                                                        │
 │   Execution Router • Circuit Breaker • Retries • Fallback • Telemetry   │
 └───────────────────────────────────┬────────────────────────────────────┘
-                                    │ 5. Dispatches to selected target
+                                    │ 6. Dispatches to selected target
                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │                   Provider Adapter Anti-Corruption Layer               │
-│                                                                        │
+│               (Internal to Model Gateway / Provider Boundary)          │
 │   Schema Translation • Credential Attachment • Stream Normalization    │
 └───────────────────────────────────┬────────────────────────────────────┘
-                                    │ 6. Vendor Wire Protocol / SDK
+                                    │ 7. Vendor Wire Protocol / SDK
                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │                     Upstream Model Providers                           │
@@ -64,10 +67,13 @@ The architectural boundary between the Model Registry and the Model Gateway is n
 
 > [!IMPORTANT]
 > **MODEL REGISTRY owns WHAT should execute.**  
-> It is the control-plane authority for canonical models, semantic versions, feature capabilities, context limits, pricing, and eligible provider targets.
+> It is the control-plane authority for canonical models, semantic versions, feature capabilities, context limits, pricing, and eligible provider targets. It is a control-plane resolution dependency of the AI Orchestrator, NOT a runtime execution hop.
+>
+> **INFERENCE SERVICE coordinates runtime execution.**  
+> It governs the execution lifecycle, timeouts, deadlines, cancellation signals, and privacy filtering between the AI Orchestrator and Model Gateway.
 >
 > **MODEL GATEWAY owns HOW to execute it.**  
-> It is the data-plane execution engine owning provider credentials, egress network calls, retry budgets, timeout enforcement, circuit breakers, dynamic target failover, and bidirectional schema normalization.
+> It is the data-plane execution engine owning provider credentials, egress network calls, retry budgets, timeout enforcement, circuit breakers, dynamic target failover, and bidirectional schema normalization. Provider Adapters operate internally within the Model Gateway and are NOT independent services.
 
 ```mermaid
 sequenceDiagram
@@ -77,6 +83,7 @@ sequenceDiagram
     participant APIGW as Platform API Gateway
     participant Orch as AI Orchestrator
     participant Reg as Model Registry (Control Plane)
+    participant Inf as Inference Service (Runtime Plane)
     participant MGW as Model Gateway (Data Plane)
     participant Adapter as Provider Adapter
     participant Upstream as Upstream Model Provider
@@ -88,8 +95,10 @@ sequenceDiagram
     Orch->>Reg: GET /internal/v1/models/resolve/claude-sonnet?effort=high
     Note over Reg: Validates capabilities & effort<br/>Retrieves active targets & routing policy
     Reg-->>Orch: 200 OK (ModelResolutionResponse)
-    Note over Orch: Prepares normalized dispatch payload
-    Orch->>MGW: POST /internal/v1/models/dispatch (GatewayDispatchPayload)
+    Note over Orch: Assembles InferenceExecutionRequest
+    Orch->>Inf: POST /internal/v1/inference/execute (InferenceExecutionRequest)
+    Note over Inf: Validates deadlines & lifecycle hooks<br/>Binds AbortSignal & passes GatewayDispatchPayload
+    Inf->>MGW: POST /internal/v1/models/dispatch (GatewayDispatchPayload)
     Note over MGW: Evaluates Circuit Breaker per target<br/>Selects healthy Target 1 (Primary)<br/>Initiates timeout & retry budget
     MGW->>Adapter: execute(ProviderExecutionRequest)
     Note over Adapter: Translates OICUNT schema to vendor format<br/>Maps effort to thinking budget<br/>Injects vendor API credentials
@@ -106,7 +115,8 @@ sequenceDiagram
     end
     Note over Adapter: Normalizes vendor tokens/events into OICUNT format
     Adapter-->>MGW: NormalizedCompletionData / StreamEvent SSE
-    MGW-->>Orch: NormalizedCompletionData / StreamEvent SSE
+    MGW-->>Inf: NormalizedCompletionData / StreamEvent SSE
+    Inf-->>Orch: NormalizedCompletionData / StreamEvent SSE
     Orch-->>APIGW: Normalized Stream / Response
     APIGW-->>BILLY: Normalized Stream / Response
     BILLY-->>User: Displays completed generation
@@ -114,9 +124,9 @@ sequenceDiagram
 
 ---
 
-## 2. Component Responsibilities & Boundary Definition
+### 2. Component Responsibilities & Boundary Definition
 
-To prevent scope creep and architectural leakage, platform responsibilities are allocated strictly across five components:
+To prevent scope creep and architectural leakage, platform responsibilities are allocated strictly across components:
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
@@ -125,8 +135,17 @@ To prevent scope creep and architectural leakage, platform responsibilities are 
 │   • Context assembly, retrieval-augmented generation (RAG) injection   │
 │   • Tool coordination & agent execution loop                           │
 │   • Queries Model Registry to resolve canonical models to targets      │
-│   • Submits normalized execution requests to Model Gateway             │
-└────────────────────────────────────────────────────────────────────────┘
+│   • Submits inference execution requests to Inference Service          │
+└───────────────────────────────────┬────────────────────────────────────┘
+                                    │
+                                    ▼
+┌───────────────────────────────────┴────────────────────────────────────┐
+│                             Inference Service                          │
+│   • Dedicated inference execution lifecycle coordination               │
+│   • Enforces deadlines, remaining turn budgets, and cancellations       │
+│   • Applies reasoning privacy redaction filters                        │
+│   • Submits normalized dispatch payloads to Model Gateway              │
+└───────────────────────────────────┬────────────────────────────────────┘
                                     │
                                     ▼
 ┌───────────────────────────────────┴────────────────────────────────────┐
@@ -139,11 +158,12 @@ To prevent scope creep and architectural leakage, platform responsibilities are 
 │   • Transparent failover across eligible targets backing same model    │
 │   • Request deadline, timeout, and cancellation lifecycle enforcement  │
 │   • Unified OpenTelemetry GenAI span generation & cost tracking        │
-└────────────────────────────────────────────────────────────────────────┘
+└───────────────────────────────────┬────────────────────────────────────┘
                                     │
                                     ▼
 ┌───────────────────────────────────┴────────────────────────────────────┐
-│                            Provider Adapter                            │
+│                   Provider Adapter Anti-Corruption Layer               │
+│               (Internal to Model Gateway / Provider Boundary)          │
 │   • Strict anti-corruption layer isolating specific vendor APIs        │
 │   • Possession & injection of vendor credentials (API keys, IAM)       │
 │   • Translation of normalized OICUNT requests to vendor-specific wire  │
@@ -151,7 +171,7 @@ To prevent scope creep and architectural leakage, platform responsibilities are 
 │   • Normalization of vendor HTTP/JSON responses to OICUNT completions  │
 │   • Normalization of vendor SSE chunk streams to OICUNT StreamEvents   │
 │   • Normalization of vendor error payloads into canonical error codes  │
-└────────────────────────────────────────────────────────────────────────┘
+└───────────────────────────────────┬────────────────────────────────────┘
                                     │
                                     ▼
 ┌───────────────────────────────────┴────────────────────────────────────┐
@@ -161,26 +181,32 @@ To prevent scope creep and architectural leakage, platform responsibilities are 
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
+> [!NOTE]
+> **Provider Adapters are NOT independent OICUNT services.**  
+> Provider adapters are internal anti-corruption layer components that live strictly inside the Model Gateway / provider boundary. They run within the Model Gateway service process and are never deployed or exposed as separate microservices.
+
 ### 2.1 Detailed Responsibility Matrix
 
-| Concern / Capability             | Model Registry  | AI Orchestrator | Model Gateway  | Provider Adapter | Upstream Provider |
-| -------------------------------- | :-------------: | :-------------: | :------------: | :--------------: | :---------------: |
-| **Canonical Model Catalog**      |    **Owns**     |    Consumes     |    Consumes    |       N/A        |        N/A        |
-| **Model Selection (Pickers)**    |    **Owns**     |  Relays to UI   |      N/A       |       N/A        |        N/A        |
-| **Effort Validation (Limits)**   |    **Owns**     |    Consumes     |    Consumes    |    Translates    |     Executes      |
-| **Eligible Target Resolution**   |    **Owns**     |    Consumes     |    Executes    |       N/A        |        N/A        |
-| **Conversation State / History** |       N/A       |    **Owns**     |      N/A       |       N/A        |        N/A        |
-| **Tool Orchestration Loop**      |       N/A       |    **Owns**     |      N/A       |       N/A        |        N/A        |
-| **Prompt Template Rendering**    |       N/A       |    **Owns**     |      N/A       |       N/A        |        N/A        |
-| **Provider Network Egress**      |   Prohibited    |   Prohibited    |    **Owns**    |     Executes     |     Receives      |
-| **Provider API Credentials**     |   Prohibited    |   Prohibited    |    Boundary    |     **Owns**     |     Validates     |
-| **Vendor SDK Dependencies**      |   Prohibited    |   Prohibited    |   Prohibited   |     **Owns**     |        N/A        |
-| **Target Circuit Breakers**      |       N/A       |       N/A       |    **Owns**    |  Reports Errors  |        N/A        |
-| **Execution Retries & Jitter**   |       N/A       |       N/A       |    **Owns**    |    Stateless     |        N/A        |
-| **Dynamic Target Failover**      |       N/A       |       N/A       |    **Owns**    |    Stateless     |        N/A        |
-| **Stream Event Normalization**   |       N/A       |    Consumes     |     Relays     |     **Owns**     |     Emits Raw     |
-| **Error Code Normalization**     |       N/A       |    Consumes     |   Normalizes   |  **Translates**  |     Emits Raw     |
-| **Token Usage & Cost Metric**    | Defines Pricing |    Consumes     | **Calculates** |   Extracts Raw   |    Reports Raw    |
+| Concern / Capability             | Model Registry  | AI Orchestrator | Inference Service | Model Gateway  | Provider Adapter | Upstream Provider |
+| -------------------------------- | :-------------: | :-------------: | :---------------: | :------------: | :--------------: | :---------------: |
+| **Canonical Model Catalog**      |    **Owns**     |    Consumes     |     Consumes      |    Consumes    |       N/A        |        N/A        |
+| **Model Selection (Pickers)**    |    **Owns**     |  Relays to UI   |        N/A        |      N/A       |       N/A        |        N/A        |
+| **Effort Validation (Limits)**   |    **Owns**     |    Consumes     |     Consumes      |    Consumes    |    Translates    |     Executes      |
+| **Eligible Target Resolution**   |    **Owns**     |    Consumes     |     Forwards      |    Executes    |       N/A        |        N/A        |
+| **Conversation State / History** |       N/A       |    **Owns**     |        N/A        |      N/A       |       N/A        |        N/A        |
+| **Tool Orchestration Loop**      |       N/A       |    **Owns**     |        N/A        |      N/A       |       N/A        |        N/A        |
+| **Prompt Template Rendering**    |       N/A       |    **Owns**     |        N/A        |      N/A       |       N/A        |        N/A        |
+| **Lifecycle Hooks & Deadlines**  |       N/A       | Sets Deadlines  |     **Owns**      |    Enforces    |    Stateless     |        N/A        |
+| **Reasoning Privacy Redaction**  |       N/A       |    Consumes     |     **Owns**      |    Boundary    |     Extracts     |     Emits Raw     |
+| **Provider Network Egress**      |   Prohibited    |   Prohibited    |    Prohibited     |    **Owns**    |     Executes     |     Receives      |
+| **Provider API Credentials**     |   Prohibited    |   Prohibited    |    Prohibited     |    Boundary    |     **Owns**     |     Validates     |
+| **Vendor SDK Dependencies**      |   Prohibited    |   Prohibited    |    Prohibited     |   Prohibited   |     **Owns**     |        N/A        |
+| **Target Circuit Breakers**      |       N/A       |       N/A       |        N/A        |    **Owns**    |  Reports Errors  |        N/A        |
+| **Execution Retries & Jitter**   |       N/A       |       N/A       |        N/A        |    **Owns**    |    Stateless     |        N/A        |
+| **Dynamic Target Failover**      |       N/A       |       N/A       |        N/A        |    **Owns**    |    Stateless     |        N/A        |
+| **Stream Event Normalization**   |       N/A       |    Consumes     |      Relays       |     Relays     |     **Owns**     |     Emits Raw     |
+| **Error Code Normalization**     |       N/A       |    Consumes     |      Relays       |   Normalizes   |  **Translates**  |     Emits Raw     |
+| **Token Usage & Cost Metric**    | Defines Pricing |    Consumes     |      Relays       | **Calculates** |   Extracts Raw   |    Reports Raw    |
 
 ### 2.2 What MUST NOT Belong to the Model Gateway
 
@@ -199,7 +225,7 @@ To maintain architectural integrity, the Model Gateway must never absorb the fol
 
 ## 3. Normalized Input Contract
 
-The Model Gateway exposes a transport-independent, normalized dispatch contract consumed by the AI Orchestrator. The request cleanly unifies execution parameters, conversational context, and resolution metadata from the Model Registry without exposing vendor-specific constructs.
+The Model Gateway exposes a transport-independent, normalized dispatch contract consumed by the Inference Service (forwarding runtime execution from the AI Orchestrator). The request cleanly unifies execution parameters, conversational context, and resolution metadata from the Model Registry without exposing vendor-specific constructs.
 
 ### 3.1 Gateway Dispatch Payload (`GatewayDispatchPayload`)
 
@@ -215,7 +241,7 @@ import type {
 import type { ChatMessage } from '@oicunt-ai/ai-types';
 
 /**
- * Normalized execution payload received by the Model Gateway from the AI Orchestrator.
+ * Normalized execution payload received by the Model Gateway from the Inference Service.
  */
 export interface GatewayDispatchPayload {
   /** Perimeter-generated authoritative request identifier */
@@ -910,32 +936,34 @@ This scenario illustrates transparent failover during upstream vendor degradatio
 
 ```
 Step 1: User selects 'claude-sonnet' in BILLY with effort 'medium'.
-Step 2: AI Orchestrator calls Model Registry resolution.
+Step 2: AI Orchestrator calls Model Registry resolution (control-plane).
 Step 3: Registry resolves:
         - Target 1: Anthropic direct (priority 1)
         - Target 2: AWS Bedrock (priority 2)
-Step 4: AI Orchestrator dispatches to Model Gateway.
-Step 5: Model Gateway invokes Target 1.
+Step 4: AI Orchestrator submits InferenceExecutionRequest to Inference Service.
+Step 5: Inference Service validates lifecycle hooks and dispatches GatewayDispatchPayload to Model Gateway.
+Step 6: Model Gateway invokes Target 1.
         -> Anthropic returns 503 Overloaded.
-Step 6: Gateway records failure on Target 1 circuit breaker.
-Step 7: Gateway examines routing policy (maxFallbackAttempts: 2).
-Step 8: Gateway executes Target 2 (AWS Bedrock).
+Step 7: Gateway records failure on Target 1 circuit breaker.
+Step 8: Gateway examines routing policy (maxFallbackAttempts: 2).
+Step 9: Gateway executes Target 2 (AWS Bedrock).
         -> AWS Bedrock returns 200 OK with full completion.
-Step 9: Gateway normalizes Bedrock completion into NormalizedCompletionData.
-Step 10: AI Orchestrator receives successful completion for 'claude-sonnet'.
-Step 11: BILLY displays answer to user. User experiences zero disruption.
+Step 10: Gateway normalizes Bedrock completion into NormalizedCompletionData.
+Step 11: Inference Service receives completion, applies privacy filters, and returns to AI Orchestrator.
+Step 12: Platform API Gateway streams/delivers response to BILLY. User experiences zero disruption.
 ```
 
 ---
 
 ## 18. Internal Model Gateway Service API
 
-The Model Gateway exposes an internal HTTP/RPC endpoint consumed by the AI Orchestrator:
+The Model Gateway exposes an internal HTTP/RPC endpoint consumed by the Inference Service:
 
 ```
 POST /internal/v1/models/dispatch
 Headers:
-  x-service-name: ai-orchestrator
+  Authorization: Bearer <internal-service-token>
+  x-service-name: inference
   x-request-id: <uuid>
   x-correlation-id: <uuid>
   x-tenant-id: <uuid>
@@ -980,8 +1008,8 @@ The Model Gateway is intentionally **stateless**:
 
 The following invariants are binding engineering standards for all current and future implementations:
 
-1. **BILLY never calls providers directly.** All model access passes through the AI Orchestrator and Model Gateway.
-2. **AI Orchestrator never calls providers directly.** It resolves targets via the Model Registry and dispatches via the Model Gateway.
+1. **BILLY never calls providers directly.** All model access passes through Platform API Gateway, AI Orchestrator, Inference Service, and Model Gateway.
+2. **AI Orchestrator never calls providers directly.** It resolves targets via the Model Registry (control-plane) and coordinates runtime execution via the Inference Service to the Model Gateway.
 3. **Model Registry never calls providers.** It has zero network access to upstream model APIs.
 4. **Model Gateway is the sole upstream inference egress boundary.** No other service may initiate connections to vendor LLM endpoints.
 5. **Provider SDKs exist only behind Provider Adapters.** Upstream SDK libraries must never be imported outside `providers/`.

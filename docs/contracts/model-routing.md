@@ -36,29 +36,39 @@ The canonical request path flows sequentially across six distinct architectural 
              │ 1. POST /api/v1/ai/completions (model: 'claude-sonnet', effort: 'high')
              ▼
 ┌─────────────────────────┐
+│  Platform API Gateway   │
+└────────────┬────────────┘
+             │ 2. POST /internal/v1/orchestrator/chat
+             ▼
+┌─────────────────────────┐
 │     AI Orchestrator     │
 └────────────┬────────────┘
-             │ 2. GET /internal/v1/models/resolve/claude-sonnet?effort=high
+             │ 3. GET /internal/v1/models/resolve/claude-sonnet?effort=high
              ▼
 ┌─────────────────────────┐
 │     Model Registry      │
 └────────────┬────────────┘
-             │ 3. ModelResolutionResponse (Eligible Targets, Limits, Effort, Metadata)
+             │ 4. ModelResolutionResponse (Eligible Targets, Limits, Effort, Metadata)
              ▼
 ┌─────────────────────────┐
 │     AI Orchestrator     │
 └────────────┬────────────┘
-             │ 4. POST /internal/v1/models/dispatch (Normalized Request + Resolution Data)
+             │ 5. POST /internal/v1/inference/execute (Model Resolution + Request Payload)
+             ▼
+┌─────────────────────────┐
+│    Inference Service    │
+└────────────┬────────────┘
+             │ 6. POST /internal/v1/models/dispatch (Normalized Request + Resolution Data)
              ▼
 ┌─────────────────────────┐
 │      Model Gateway      │
 └────────────┬────────────┘
-             │ 5. Invokes Provider Adapter (Target selection, Fallback, Retries, Circuit Breaker)
+             │ 7. Invokes Provider Adapter (Target selection, Fallback, Retries, Circuit Breaker)
              ▼
 ┌─────────────────────────┐
-│    Provider Adapter     │
+│    Provider Adapter     │ (Internal to Model Gateway boundary)
 └────────────┬────────────┘
-             │ 6. Upstream Wire Protocol & SDKs (Anthropic, Bedrock, OpenAI, Google)
+             │ 8. Upstream Wire Protocol & SDKs (Anthropic, Bedrock, OpenAI, Google)
              ▼
 ┌─────────────────────────┐
 │ Upstream Model Provider │
@@ -73,6 +83,7 @@ sequenceDiagram
     participant APIGW as Platform API Gateway
     participant Orch as AI Orchestrator
     participant Reg as Model Registry
+    participant Inf as Inference Service
     participant MGW as Model Gateway
     participant Adapter as Provider Adapter
     participant Upstream as Upstream Model Provider
@@ -87,7 +98,9 @@ sequenceDiagram
     Orch->>Reg: GET /internal/v1/models/resolve/claude-sonnet?effort=high
     Note over Reg: Validates canonical model & effort capability<br/>Determines eligible provider targets<br/>Evaluates routing policy
     Reg-->>Orch: 200 OK (ModelResolutionResponse)
-    Orch->>MGW: POST /internal/v1/models/dispatch (NormalizedCompletionRequest + Resolution)
+    Orch->>Inf: POST /internal/v1/inference/execute (Prompt/Context + Resolution)
+    Note over Inf: Coordinates runtime inference execution<br/>Applies inference lifecycle policies
+    Inf->>MGW: POST /internal/v1/models/dispatch (NormalizedCompletionRequest + Resolution)
     Note over MGW: Evaluates Circuit Breaker<br/>Selects healthy Provider Target (Primary vs. Fallback)<br/>Applies Retry/Timeout budget
     MGW->>Adapter: Execute(ProviderExecutionRequest)
     Note over Adapter: Translates to Provider Schema (maps effort to thinking budget)<br/>Attaches Provider Credentials
@@ -95,7 +108,8 @@ sequenceDiagram
     Upstream-->>Adapter: Native Response / Stream Chunks
     Note over Adapter: Normalizes to OICUNT Canonical Format
     Adapter-->>MGW: NormalizedCompletionData / StreamEvent SSE
-    MGW-->>Orch: NormalizedCompletionData / StreamEvent SSE
+    MGW-->>Inf: NormalizedCompletionData / StreamEvent SSE
+    Inf-->>Orch: NormalizedCompletionData / StreamEvent SSE
     Orch-->>APIGW: Normalized Stream / Response
     APIGW-->>BILLY: Normalized Stream / Response
     BILLY-->>User: Renders completion in real-time
@@ -212,7 +226,7 @@ The platform defines standard canonical model identifiers in `@oicunt-ai/model-t
 
 ## 4. Normalized Model Resolution Contract
 
-The AI Orchestrator queries the Model Registry to resolve a canonical model identifier before dispatching execution to the Model Gateway.
+The AI Orchestrator queries the Model Registry to resolve a canonical model identifier before dispatching execution to the Inference Service and Model Gateway.
 
 ### 4.1 Model Catalog Discovery (`GET /internal/v1/catalog`)
 

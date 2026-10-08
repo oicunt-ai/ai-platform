@@ -9,30 +9,39 @@ It provides deterministic resolution of public **Canonical Model Identifiers** (
 ## 1. Architectural Role & Boundary Invariants
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        AI Orchestrator / BILLY                         │
-└──────────────────────────────────┬─────────────────────────────────────┘
-                                   │
-                                   │ 1. GET /internal/v1/models/resolve/:id
-                                   ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                     Model Registry (Control Plane)                     │
-│                                                                        │
-│   Canonical Models • Versions • Targets • Policies • Aliases • Audit   │
-└──────────────────────────────────┬─────────────────────────────────────┘
-                                   │
-                                   │ 2. Returns Resolved Eligible Targets & Limits
-                                   ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                      Model Gateway (Data Plane)                        │
-└──────────────────────────────────┬─────────────────────────────────────┘
-                                   │
-                                   │ 3. Dispatches via Provider Adapters (Egress)
-                                   ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                      Upstream LLM Model Providers                      │
-│            Anthropic • OpenAI • Google Gemini • AWS Bedrock            │
-└────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────┐
+│                  Platform API Gateway / Perimeter Ingress                  │
+└─────────────────────────────────────┬──────────────────────────────────────┘
+                                      │
+                                      ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                              AI Orchestrator                               │
+└──────────────────┬───────────────────────────────────────┬─────────────────┘
+                   │                                       │
+     (Control Plane Resolution)               (Runtime Execution Coordination)
+  1. GET /internal/v1/models/resolve/:id                   │
+  2. ModelResolutionResponse                               │ 3. Execute
+                   ▼                                       ▼
+┌──────────────────────────────────────┐  ┌──────────────────────────────────┐
+│    Model Registry (Control Plane)    │  │ Inference Service (Runtime Plane)│
+│                                      │  └────────────────┬─────────────────┘
+│ Canonical Models • Versions • Targets│                   │ 4. Dispatch
+│ Policies • Limits • Pricing Tables   │                   ▼
+└──────────────────────────────────────┘  ┌──────────────────────────────────┐
+                                          │    Model Gateway (Data Plane)    │
+                                          │   (Circuit Breakers, Retries)    │
+                                          └────────────────┬─────────────────┘
+                                                           │ 5. Invoke Adapter
+                                                           ▼
+                                          ┌──────────────────────────────────┐
+                                          │ Provider Adapter (Internal ACL)  │
+                                          └────────────────┬─────────────────┘
+                                                           │ 6. Wire Protocol
+                                                           ▼
+                                          ┌──────────────────────────────────┐
+                                          │   Upstream LLM Model Providers   │
+                                          │ Anthropic • OpenAI • Google • AWS│
+                                          └──────────────────────────────────┘
 ```
 
 ### Strict Architectural Invariants

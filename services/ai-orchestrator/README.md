@@ -13,7 +13,9 @@ The **AI Orchestrator** is the unified, application-level execution coordinator 
 
 ```
 BILLY (Product Application)
-  ↓ POST /internal/v1/orchestrator/chat
+  ↓ HTTPS + Bearer JWT
+Platform API Gateway (Perimeter Ingress & Auth)
+  ↓ POST /internal/v1/orchestrator/chat (Service Auth)
 AI Orchestrator (Coordination Plane)
   ├── 1. GET /internal/v1/models/resolve/:id (Model Registry - Control Plane)
   └── 2. POST /internal/v1/inference/execute (Inference Service - Runtime Execution Plane)

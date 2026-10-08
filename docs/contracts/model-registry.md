@@ -16,30 +16,38 @@ It serves two primary operational roles:
 2. **Deterministic Model Resolution Authority (Model Resolution)**: Deterministically resolves user-selected canonical models and optional effort levels into concrete, eligible execution targets, token limits, and routing policies consumed by the **AI Orchestrator** and executed by the **Model Gateway** (see [Model Gateway Contract](./model-gateway.md) and [AI Orchestrator Contract](./ai-orchestrator.md)).
 
 ```
-┌────────────────────────────────────────────────────────────────────────┐
-│                        AI Orchestrator / BILLY                         │
-└──────────────────────────────────┬─────────────────────────────────────┘
-                                   │
-                                   │ 1a. GET /internal/v1/catalog (Dynamic Catalog Discovery)
-                                   │ 1b. GET /internal/v1/models/resolve/:id?effort=high
-                                   ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                     Model Registry (Control Plane)                     │
-│                                                                        │
-│   Canonical Models • Versions • Targets • Policies • Aliases • Audit   │
-└──────────────────────────────────┬─────────────────────────────────────┘
-                                   │
-                                   │ 2. Returns Resolved Eligible Targets & Limits
-                                   ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                      Model Gateway (Data Plane)                        │
-└──────────────────────────────────┬─────────────────────────────────────┘
-                                   │
-                                   │ 3. Dispatches via Provider Adapters (Egress)
-                                   ▼
-┌────────────────────────────────────────────────────────────────────────┐
-│                      Upstream LLM Model Providers                      │
-└────────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────────────┐
+│                  Platform API Gateway / Perimeter Ingress                  │
+└─────────────────────────────────────┬──────────────────────────────────────┘
+                                      │
+                                      ▼
+┌────────────────────────────────────────────────────────────────────────────┐
+│                              AI Orchestrator                               │
+└──────────────────┬───────────────────────────────────────┬─────────────────┘
+                   │                                       │
+     (Control Plane Resolution)               (Runtime Execution Coordination)
+  1. GET /internal/v1/models/resolve/:id                   │
+  2. ModelResolutionResponse                               │ 3. Execute
+                   ▼                                       ▼
+┌──────────────────────────────────────┐  ┌──────────────────────────────────┐
+│    Model Registry (Control Plane)    │  │ Inference Service (Runtime Plane)│
+│                                      │  └────────────────┬─────────────────┘
+│ Canonical Models • Versions • Targets│                   │ 4. Dispatch
+│ Policies • Limits • Pricing Tables   │                   ▼
+└──────────────────────────────────────┘  ┌──────────────────────────────────┐
+                                          │    Model Gateway (Data Plane)    │
+                                          │   (Circuit Breakers, Retries)    │
+                                          └────────────────┬─────────────────┘
+                                                           │ 5. Invoke Adapter
+                                                           ▼
+                                          ┌──────────────────────────────────┐
+                                          │ Provider Adapter (Internal ACL)  │
+                                          └────────────────┬─────────────────┘
+                                                           │ 6. Wire Protocol
+                                                           ▼
+                                          ┌──────────────────────────────────┐
+                                          │   Upstream LLM Model Providers   │
+                                          └──────────────────────────────────┘
 ```
 
 ---

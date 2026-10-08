@@ -47,6 +47,12 @@ The Usage Service provides an uncompromised, provider-neutral abstraction over c
 > [!IMPORTANT]
 > **Cardinal Non-Blocking Invariant**: The Usage Service is strictly **out of the runtime execution critical path**. Runtime execution (inference, model gateway dispatches, vector embeddings, tool sandboxes, agent steps) must **NEVER** depend on synchronous calls to the Usage Service to proceed or succeed. A degradation or outage of the Usage Service must **never** prevent users from generating model completions or executing tools.
 
+> [!NOTE]
+> **Platform vs. AI Platform Ownership Boundaries**:
+>
+> - **Platform (`platform/services/usage`) owns**: Authoritative company-wide usage metering, durable append-only event persistence, idempotency deduplication, temporal rollups, tenant isolation, and downstream query APIs for billing/invoicing.
+> - **AI Platform (`ai-platform`) owns**: Event emission only, reporting normalized AI-specific measurements (`tokens.input`, `tokens.output`, `tokens.reasoning`, `tool.calls`, etc.). AI Platform has no billing authority and does not store company-wide metering records.
+
 ---
 
 ## 2. Core Responsibilities & Non-Responsibilities

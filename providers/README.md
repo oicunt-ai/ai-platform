@@ -58,12 +58,12 @@ The `providers/` boundary isolates external AI model vendors (e.g. Anthropic, Op
 
 ---
 
-## 3. Future Adapter Specifications
+## 3. Adapter Implementations & Roadmap
 
-When implemented in subsequent milestones, adapters will include:
+Provider adapters reside internally within the Model Gateway provider boundary (`services/model-gateway/src/infrastructure/adapters/`) and function as anti-corruption layers rather than standalone microservices:
 
-- `providers/anthropic`: Anthropic Messages API client and Claude SSE stream normalizer.
-- `providers/openai`: OpenAI Chat Completions client and chunk normalizer.
-- `providers/google`: Google GenAI SDK adapter and Gemini stream normalizer.
-- `providers/bedrock`: AWS Bedrock Converse API adapter with SigV4 request signing.
-- `providers/local`: Self-hosted model endpoint adapter (vLLM / Ollama).
+- **Anthropic Provider Adapter** (`services/model-gateway/src/infrastructure/adapters/anthropic/`): **Implemented** (supporting canonical model `claude-sonnet`, unary execution, real-time SSE streaming, and error normalization).
+- **OpenAI Adapter**: Planned (OpenAI Chat Completions client and chunk normalizer).
+- **Google Gemini Adapter**: Planned (Google GenAI SDK adapter and Gemini stream normalizer).
+- **AWS Bedrock Adapter**: Planned (AWS Bedrock Converse API adapter with SigV4 request signing).
+- **Local Runner Adapter**: Planned (Self-hosted model endpoint adapter for vLLM / Ollama).
