@@ -43,12 +43,7 @@ export class GetConversationUseCase {
       throw new ConversationDeletedError(conversationId);
     }
 
-    // End-user caller ownership check (e.g. from billy-api)
-    if (
-      context.callerServiceName === 'billy-api' &&
-      context.userId &&
-      conversation.userId !== context.userId
-    ) {
+    if (context.userId && conversation.userId !== context.userId) {
       throw new UserMismatchError(
         `User '${context.userId}' does not own conversation '${conversationId}'`,
       );

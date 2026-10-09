@@ -8,7 +8,11 @@ import type {
   MemorySummary,
   PurgeResult,
 } from '../../domain/index.js';
-import { ConversationDeletedError, ConversationNotFoundError } from '../../domain/index.js';
+import {
+  ConversationDeletedError,
+  ConversationNotFoundError,
+  InvalidRequestError,
+} from '../../domain/index.js';
 import type { AppendMessageItem } from '../../application/dtos/message.dto.js';
 import type { ConversationRepositoryPort } from '../../application/ports/conversation-repository.port.js';
 import type { DatabasePool } from '../database/connection.js';
@@ -34,6 +38,7 @@ interface MessageRow {
   conversation_id: string;
   tenant_id: string;
   turn_id: string;
+  turn_ordinal: number;
   sequence_number: number;
   role: string;
   content: unknown;
@@ -79,6 +84,7 @@ function mapMessage(row: MessageRow): ConversationMessage {
     conversationId: row.conversation_id,
     tenantId: row.tenant_id,
     turnId: row.turn_id,
+    turnOrdinal: Number(row.turn_ordinal),
     sequenceNumber: Number(row.sequence_number),
     role: row.role as ConversationMessage['role'],
     content: (typeof row.content === 'string'
@@ -320,6 +326,35 @@ export class PostgresConversationRepository implements ConversationRepositoryPor
           throw new ConversationDeletedError(conversationId);
         }
 
+        const existingTurn = await client.query<MessageRow>(
+          `SELECT * FROM oicunt_memory.conversation_messages
+           WHERE conversation_id = $1 AND tenant_id = $2 AND turn_id = $3
+           ORDER BY turn_ordinal ASC;`,
+          [conversationId, tenantId, turnId],
+        );
+        if (existingTurn.rows.length > 0) {
+          const matches =
+            existingTurn.rows.length === messages.length &&
+            existingTurn.rows.every((row, index) => {
+              const item = messages[index]!;
+              return (
+                row.turn_ordinal === index &&
+                row.role === item.role &&
+                JSON.stringify(row.content) === JSON.stringify(item.content) &&
+                row.name === (item.name ?? null)
+              );
+            });
+          if (!matches) {
+            throw new InvalidRequestError(
+              `Turn '${turnId}' was already checkpointed with different content`,
+            );
+          }
+          return {
+            conversation: mapConversation(convRow),
+            appendedMessages: existingTurn.rows.map(mapMessage),
+          };
+        }
+
         // 2. Fetch current maximum sequence number for this conversation
         const maxSeqRes = await client.query<{ max_seq: string | null }>(
           `SELECT MAX(sequence_number) as max_seq FROM oicunt_memory.conversation_messages WHERE conversation_id = $1 AND tenant_id = $2;`,
@@ -342,9 +377,9 @@ export class PostgresConversationRepository implements ConversationRepositoryPor
 
           const insertSql = `
           INSERT INTO oicunt_memory.conversation_messages (
-            id, conversation_id, tenant_id, turn_id, sequence_number,
+            id, conversation_id, tenant_id, turn_id, turn_ordinal, sequence_number,
             role, content, name, token_estimate, metadata, created_at
-          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+          ) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
           RETURNING *;
         `;
           const insertParams = [
@@ -352,6 +387,7 @@ export class PostgresConversationRepository implements ConversationRepositoryPor
             conversationId,
             tenantId,
             turnId,
+            i,
             seq,
             item.role,
             typeof item.content === 'string'

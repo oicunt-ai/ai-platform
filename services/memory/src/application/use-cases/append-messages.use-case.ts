@@ -53,11 +53,7 @@ export class AppendMessagesUseCase {
       throw new ConversationDeletedError(conversationId);
     }
 
-    if (
-      context.callerServiceName === 'billy-api' &&
-      context.userId &&
-      conversation.userId !== context.userId
-    ) {
+    if (context.userId && conversation.userId !== context.userId) {
       throw new UserMismatchError(
         `User '${context.userId}' does not own conversation '${conversationId}'`,
       );

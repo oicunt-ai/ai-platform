@@ -24,11 +24,7 @@ export class ListConversationsUseCase {
       throw new InvalidRequestError('Tenant ID is required');
     }
 
-    // If caller is an end-user service (billy-api), enforce user filter
-    let effectiveUserId = query.userId;
-    if (context.callerServiceName === 'billy-api' && context.userId) {
-      effectiveUserId = context.userId;
-    }
+    const effectiveUserId = context.userId ?? query.userId;
 
     const effectiveQuery: ListConversationsQuery = {
       ...query,

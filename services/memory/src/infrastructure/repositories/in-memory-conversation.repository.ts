@@ -8,7 +8,11 @@ import type {
   MemorySummary,
   PurgeResult,
 } from '../../domain/index.js';
-import { ConversationDeletedError, ConversationNotFoundError } from '../../domain/index.js';
+import {
+  ConversationDeletedError,
+  ConversationNotFoundError,
+  InvalidRequestError,
+} from '../../domain/index.js';
 import type { AppendMessageItem } from '../../application/dtos/message.dto.js';
 import type { ConversationRepositoryPort } from '../../application/ports/conversation-repository.port.js';
 
@@ -181,6 +185,37 @@ export class InMemoryConversationRepository implements ConversationRepositoryPor
       throw new ConversationDeletedError(conversationId);
     }
 
+    const existingTurn = Array.from(this.messages.values())
+      .filter(
+        (message) =>
+          message.tenantId === tenantId &&
+          message.conversationId === conversationId &&
+          message.turnId === turnId,
+      )
+      .sort((a, b) => (a.turnOrdinal ?? 0) - (b.turnOrdinal ?? 0));
+    if (existingTurn.length > 0) {
+      const matches =
+        existingTurn.length === messages.length &&
+        existingTurn.every((message, index) => {
+          const item = messages[index]!;
+          return (
+            message.turnOrdinal === index &&
+            message.role === item.role &&
+            JSON.stringify(message.content) === JSON.stringify(item.content) &&
+            message.name === (item.name ?? null)
+          );
+        });
+      if (!matches) {
+        throw new InvalidRequestError(
+          `Turn '${turnId}' was already checkpointed with different content`,
+        );
+      }
+      return {
+        conversation: { ...existing },
+        appendedMessages: Object.freeze(existingTurn.map((message) => ({ ...message }))),
+      };
+    }
+
     // Calculate current max sequence
     let currentMaxSeq = 0;
     for (const msg of this.messages.values()) {
@@ -207,6 +242,7 @@ export class InMemoryConversationRepository implements ConversationRepositoryPor
         conversationId,
         tenantId,
         turnId,
+        turnOrdinal: i,
         sequenceNumber: seq,
         role: item.role,
         content: item.content,

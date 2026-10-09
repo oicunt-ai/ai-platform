@@ -13,6 +13,9 @@ export interface ConversationMessage {
   /** Turn identifier grouping corresponding user/assistant exchange */
   readonly turnId: string;
 
+  /** Zero-based position inside a turn; provides durable retry idempotency. */
+  readonly turnOrdinal?: number | undefined;
+
   /**
    * Strictly increasing and unique sequence number within this conversation.
    * Invariant: Strictly increasing and unique per conversation; gaps are allowed while ordering remains deterministic.

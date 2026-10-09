@@ -70,7 +70,7 @@ describe('Conversation Lifecycle Use Cases', () => {
     );
   });
 
-  it('enforces user ownership when called by billy-api', async () => {
+  it('enforces user ownership independently of the caller service name', async () => {
     const conv = await createUseCase.execute(
       { title: 'User Owned' },
       { tenantId: 'tenant-1', userId: 'user-1' },
@@ -80,7 +80,7 @@ describe('Conversation Lifecycle Use Cases', () => {
     const ok = await getUseCase.execute(conv.id, {
       tenantId: 'tenant-1',
       userId: 'user-1',
-      callerServiceName: 'billy-api',
+      callerServiceName: 'ai-orchestrator',
     });
     expect(ok.id).toBe(conv.id);
 
@@ -89,7 +89,7 @@ describe('Conversation Lifecycle Use Cases', () => {
       getUseCase.execute(conv.id, {
         tenantId: 'tenant-1',
         userId: 'user-2',
-        callerServiceName: 'billy-api',
+        callerServiceName: 'ai-orchestrator',
       }),
     ).rejects.toThrow(UserMismatchError);
   });

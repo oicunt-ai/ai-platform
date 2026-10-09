@@ -136,6 +136,39 @@ describe('Message Sequencing & Appending Use Cases', () => {
     expect(page2.messages[1]!.sequenceNumber).toBe(4);
   });
 
+  it('makes turn checkpoint retries idempotent and rejects conflicting reuse', async () => {
+    const conv = await createUseCase.execute(
+      { title: 'Retry-safe chat' },
+      { tenantId: 'tenant-1', userId: 'user-1' },
+    );
+    const checkpoint = {
+      turnId: 'turn-stable',
+      messages: [
+        { role: 'user' as const, content: 'hello' },
+        { role: 'assistant' as const, content: 'hi' },
+      ],
+    };
+    const first = await appendUseCase.execute(conv.id, checkpoint, {
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+    });
+    const retry = await appendUseCase.execute(conv.id, checkpoint, {
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+    });
+    expect(retry.totalConversationMessages).toBe(2);
+    expect(retry.messages.map((message) => message.id)).toEqual(
+      first.messages.map((message) => message.id),
+    );
+    await expect(
+      appendUseCase.execute(
+        conv.id,
+        { turnId: 'turn-stable', messages: [{ role: 'user', content: 'different' }] },
+        { tenantId: 'tenant-1', userId: 'user-1' },
+      ),
+    ).rejects.toThrow(InvalidRequestError);
+  });
+
   it('rejects appending to a soft-deleted conversation', async () => {
     const conv = await createUseCase.execute(
       { title: 'Chat' },

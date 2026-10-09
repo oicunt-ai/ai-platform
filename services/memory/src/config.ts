@@ -36,7 +36,7 @@ export function loadMemoryConfig(overrides?: Partial<MemoryConfig>): MemoryConfi
     .map((s) => s.trim())
     .filter((s) => s.length > 0);
 
-  return {
+  const config: MemoryConfig = {
     serviceName: overrides?.serviceName ?? process.env['SERVICE_NAME'] ?? 'memory',
     version: overrides?.version ?? process.env['SERVICE_VERSION'] ?? '0.1.0',
     port:
@@ -47,7 +47,7 @@ export function loadMemoryConfig(overrides?: Partial<MemoryConfig>): MemoryConfi
     internalToken:
       overrides?.internalToken !== undefined
         ? overrides.internalToken
-        : (process.env['INTERNAL_AUTH_TOKEN'] ?? process.env['MEMORY_INTERNAL_TOKEN'] ?? undefined),
+        : (process.env['MEMORY_INTERNAL_TOKEN'] ?? process.env['INTERNAL_AUTH_TOKEN'] ?? undefined),
     allowedServiceIdentities: Object.freeze(
       overrides?.allowedServiceIdentities ?? defaultAllowedIdentities,
     ),
@@ -83,4 +83,20 @@ export function loadMemoryConfig(overrides?: Partial<MemoryConfig>): MemoryConfi
         Number.parseInt(process.env['DATABASE_CONN_TIMEOUT_MS'] ?? '3000', 10),
     },
   };
+
+  if (config.environment === 'production') {
+    const missing = [
+      ['MEMORY_INTERNAL_TOKEN', config.internalToken],
+      ['DATABASE_HOST', config.database.host],
+      ['DATABASE_USER', config.database.user],
+      ['DATABASE_PASSWORD', config.database.password],
+    ].filter(([, value]) => !value || value.trim().length === 0);
+    if (missing.length > 0) {
+      throw new Error(
+        `Memory production configuration is incomplete: ${missing.map(([name]) => name).join(', ')}`,
+      );
+    }
+  }
+
+  return config;
 }

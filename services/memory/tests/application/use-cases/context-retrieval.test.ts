@@ -216,7 +216,7 @@ describe('GetContextUseCase (Bounded Context Retrieval)', () => {
     ).rejects.toThrow(ConversationDeletedError);
   });
 
-  it('enforces billy-api user ownership check', async () => {
+  it('enforces ownership for user context forwarded by ai-orchestrator', async () => {
     const conv = await createUseCase.execute(
       { title: 'Owned Conv' },
       { tenantId: 'tenant-1', userId: 'user-owner' },
@@ -229,7 +229,7 @@ describe('GetContextUseCase (Bounded Context Retrieval)', () => {
         {
           tenantId: 'tenant-1',
           userId: 'user-other',
-          callerServiceName: 'billy-api',
+          callerServiceName: 'ai-orchestrator',
         },
       ),
     ).rejects.toThrow(UserMismatchError);

@@ -37,11 +37,7 @@ export class DeleteConversationUseCase {
       throw new ConversationNotFoundError(conversationId);
     }
 
-    if (
-      context.callerServiceName === 'billy-api' &&
-      context.userId &&
-      existing.userId !== context.userId
-    ) {
+    if (context.userId && existing.userId !== context.userId) {
       throw new UserMismatchError(
         `User '${context.userId}' does not own conversation '${conversationId}'`,
       );

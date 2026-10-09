@@ -1,4 +1,5 @@
 import type { IncomingMessage } from 'node:http';
+import { verifyInternalServiceToken } from '../../infrastructure/security/internal-service-token.js';
 import { AuthenticationError, ForbiddenError, InvalidRequestError } from '../../domain/index.js';
 import type { RequestContext } from './context.js';
 import { extractHeader } from './context.js';
@@ -27,8 +28,27 @@ export function validateInternalToken(req: IncomingMessage, internalToken?: stri
     providedToken = tokenHeader.trim();
   }
 
-  if (!providedToken || providedToken !== internalToken) {
+  const signed = providedToken
+    ? verifyInternalServiceToken(providedToken, internalToken, 'memory')
+    : null;
+  const rawTestToken = process.env['NODE_ENV'] === 'test' && providedToken === internalToken;
+  if (!providedToken || (!signed && !rawTestToken)) {
     throw new AuthenticationError('Missing or invalid service authorization token');
+  }
+
+  if (signed) {
+    const pairs = [
+      ['x-service-name', signed.sub],
+      ['x-tenant-id', signed.tenantId],
+      ['x-user-id', signed.userId],
+      ['x-request-id', signed.requestId],
+      ['x-correlation-id', signed.correlationId],
+    ] as const;
+    for (const [name, value] of pairs) {
+      if (value !== req.headers[name]) {
+        throw new AuthenticationError('Signed request context mismatch');
+      }
+    }
   }
 }
 
