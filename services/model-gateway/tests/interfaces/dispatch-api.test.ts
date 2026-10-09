@@ -10,7 +10,7 @@ describe('Model Gateway HTTP Dispatch API (POST /internal/v1/models/dispatch)', 
   let fakeAdapter: FakeProviderAdapter;
 
   beforeEach(async () => {
-    fakeAdapter = new FakeProviderAdapter('anthropic');
+    fakeAdapter = new FakeProviderAdapter('test-provider');
     service = new ModelGatewayService({
       config: loadModelGatewayConfig({
         port: 0,
@@ -29,7 +29,7 @@ describe('Model Gateway HTTP Dispatch API (POST /internal/v1/models/dispatch)', 
   const validPayload = {
     requestId: 'req-api-1',
     correlationId: 'corr-api-1',
-    canonicalModelId: 'claude-sonnet',
+    canonicalModelId: 'oicunt.model.catalog-alpha',
     version: '1.0.0',
     stream: false,
     messages: [{ role: 'user', content: 'Hello API' }],
@@ -44,8 +44,8 @@ describe('Model Gateway HTTP Dispatch API (POST /internal/v1/models/dispatch)', 
     eligibleTargets: [
       {
         targetId: 'target-1',
-        provider: 'anthropic' as const,
-        upstreamModelId: 'claude-3-5-sonnet',
+        provider: 'test-provider' as const,
+        upstreamModelId: 'provider-model-alpha',
         priority: 1,
         weight: 100,
         supportsStreaming: true,
@@ -232,7 +232,7 @@ describe('Model Gateway HTTP Dispatch API - Internal Token Authentication', () =
   const secret = 'mgw-test-secret';
 
   beforeEach(async () => {
-    fakeAdapter = new FakeProviderAdapter('anthropic');
+    fakeAdapter = new FakeProviderAdapter('test-provider');
     service = new ModelGatewayService({
       config: loadModelGatewayConfig({
         port: 0,
@@ -252,7 +252,7 @@ describe('Model Gateway HTTP Dispatch API - Internal Token Authentication', () =
   const validPayload = {
     requestId: 'req-auth-1',
     correlationId: 'corr-auth-1',
-    canonicalModelId: 'claude-sonnet',
+    canonicalModelId: 'oicunt.model.catalog-alpha',
     version: '1.0.0',
     stream: false,
     messages: [{ role: 'user', content: 'Hello API' }],
@@ -261,8 +261,8 @@ describe('Model Gateway HTTP Dispatch API - Internal Token Authentication', () =
     eligibleTargets: [
       {
         targetId: 'target-1',
-        provider: 'anthropic' as const,
-        upstreamModelId: 'claude-3-5-sonnet',
+        provider: 'test-provider' as const,
+        upstreamModelId: 'provider-model-alpha',
         priority: 1,
         weight: 100,
         supportsStreaming: true,

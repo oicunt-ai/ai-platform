@@ -89,9 +89,9 @@ describe('ExecutionBudget Domain Logic', () => {
 
     await new Promise((resolve) => setTimeout(resolve, 30));
 
-    expect(() => budget.assertCanAttempt('target-a', 'claude-sonnet', 'test-corr-5')).toThrow(
-      InferenceTimeoutError,
-    );
+    expect(() =>
+      budget.assertCanAttempt('target-a', 'oicunt.model.catalog-alpha', 'test-corr-5'),
+    ).toThrow(InferenceTimeoutError);
   });
 
   it('creates an attempt signal bounded by attempt timeout and global budget', () => {

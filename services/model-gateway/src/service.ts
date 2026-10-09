@@ -3,7 +3,6 @@ import { loadModelGatewayConfig, type ModelGatewayConfig } from './config.js';
 import type { AdapterRegistryPort } from './application/ports/adapter-registry.port.js';
 import type { CircuitBreakerStorePort } from './application/ports/circuit-breaker-store.port.js';
 import { InMemoryAdapterRegistry } from './infrastructure/adapters/in-memory-adapter-registry.js';
-import { AnthropicProviderAdapter } from './infrastructure/adapters/anthropic/index.js';
 import { InMemoryCircuitBreakerStore } from './infrastructure/circuit-breaker/in-memory-circuit-breaker-store.js';
 import { JsonLogger } from './infrastructure/logging/logger.js';
 import { DispatchModelUseCase } from './application/use-cases/dispatch-model.use-case.js';
@@ -11,6 +10,8 @@ import { DispatchController } from './interfaces/http/controllers/dispatch.contr
 import { createHttpRouter } from './interfaces/http/router.js';
 import type { AiMetricsRecorder, AiTracer } from '@oicunt-ai/observability';
 import { NoopAiMetricsRecorder, NoopAiTracer } from '@oicunt-ai/observability';
+import type { UsagePublisherPort } from './application/ports/usage-publisher.port.js';
+import { RabbitMqUsagePublisher } from './infrastructure/usage/rabbitmq-usage.publisher.js';
 
 export interface ModelGatewayDependencies {
   readonly config?: ModelGatewayConfig | undefined;
@@ -18,6 +19,7 @@ export interface ModelGatewayDependencies {
   readonly circuitBreakerStore?: CircuitBreakerStorePort | undefined;
   readonly tracer?: AiTracer | undefined;
   readonly metrics?: AiMetricsRecorder | undefined;
+  readonly usagePublisher?: UsagePublisherPort | undefined;
 }
 
 export class ModelGatewayService {
@@ -27,24 +29,14 @@ export class ModelGatewayService {
   private readonly logger: JsonLogger;
   private readonly dispatchUseCase: DispatchModelUseCase;
   private readonly dispatchController: DispatchController;
+  private readonly usagePublisher?: UsagePublisherPort | undefined;
   private server: Server | null = null;
   private ready = false;
 
   constructor(dependencies: ModelGatewayDependencies = {}) {
     this.config = dependencies.config ?? loadModelGatewayConfig();
 
-    if (dependencies.adapterRegistry) {
-      this.adapterRegistry = dependencies.adapterRegistry;
-    } else {
-      const defaultRegistry = new InMemoryAdapterRegistry();
-      defaultRegistry.register(
-        new AnthropicProviderAdapter({
-          apiKey: this.config.anthropic?.apiKey,
-          baseUrl: this.config.anthropic?.baseUrl,
-        }),
-      );
-      this.adapterRegistry = defaultRegistry;
-    }
+    this.adapterRegistry = dependencies.adapterRegistry ?? new InMemoryAdapterRegistry();
     this.circuitBreakerStore =
       dependencies.circuitBreakerStore ??
       new InMemoryCircuitBreakerStore(this.config.circuitBreaker);
@@ -53,6 +45,11 @@ export class ModelGatewayService {
       this.config.serviceName,
       (this.config.logLevel as 'debug' | 'info' | 'warn' | 'error' | 'silent') || 'info',
     );
+    this.usagePublisher =
+      dependencies.usagePublisher ??
+      (this.config.enableUsagePublishing && this.config.rabbitmqUrl
+        ? new RabbitMqUsagePublisher(this.config.rabbitmqUrl, this.config.usageExchange)
+        : undefined);
 
     this.dispatchUseCase = new DispatchModelUseCase({
       adapterRegistry: this.adapterRegistry,
@@ -61,6 +58,7 @@ export class ModelGatewayService {
       metrics: dependencies.metrics ?? new NoopAiMetricsRecorder(),
       retryPolicy: this.config.retryPolicy,
       defaultTimeoutMs: this.config.defaultTimeoutMs,
+      usagePublisher: this.usagePublisher,
     });
 
     this.dispatchController = new DispatchController({
@@ -86,11 +84,15 @@ export class ModelGatewayService {
   }
 
   public async start(): Promise<number> {
+    await this.usagePublisher?.start();
     const router = createHttpRouter({
       dispatchController: this.dispatchController,
       serviceName: this.config.serviceName,
       version: this.config.version,
-      isReady: () => this.ready,
+      isReady: () =>
+        this.ready &&
+        this.adapterRegistry.getAllAdapters().length > 0 &&
+        (this.usagePublisher?.isReady() ?? true),
       allowedServiceIdentities: this.config.allowedServiceIdentities,
       internalToken: this.config.internalToken,
       environment: this.config.environment,
@@ -140,18 +142,23 @@ export class ModelGatewayService {
   public async stop(): Promise<void> {
     this.ready = false;
     if (!this.server) {
+      await this.usagePublisher?.close();
       return;
     }
 
+    const server = this.server;
+
     return new Promise((resolve, reject) => {
-      this.server!.close((err) => {
+      server.close((err) => {
         if (err) {
           reject(err);
         } else {
           this.server = null;
-          resolve();
+          void Promise.resolve(this.usagePublisher?.close()).then(resolve, reject);
         }
       });
+      server.closeIdleConnections();
+      server.closeAllConnections();
     });
   }
 }

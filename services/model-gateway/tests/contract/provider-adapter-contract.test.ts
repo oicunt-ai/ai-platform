@@ -26,7 +26,7 @@ describe('IProviderAdapter Port Contract Conformance', () => {
       payload: {
         requestId: 'test-req-id',
         correlationId: 'test-corr-id',
-        canonicalModelId: 'claude-sonnet',
+        canonicalModelId: 'oicunt.model.catalog-alpha',
         version: '1.0.0',
         stream: false,
         messages: [{ role: 'user', content: 'Say hello' }],

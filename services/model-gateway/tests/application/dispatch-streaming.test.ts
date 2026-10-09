@@ -14,7 +14,7 @@ describe('DispatchModelUseCase - Streaming Execution', () => {
     const adapterRegistry = new InMemoryAdapterRegistry();
     const circuitBreakerStore = new InMemoryCircuitBreakerStore();
 
-    const fakeAdapterA = new FakeProviderAdapter('anthropic');
+    const fakeAdapterA = new FakeProviderAdapter('test-provider');
     const fakeAdapterB = new FakeProviderAdapter('openai');
     adapterRegistry.register(fakeAdapterA);
     adapterRegistry.register(fakeAdapterB);
@@ -27,7 +27,7 @@ describe('DispatchModelUseCase - Streaming Execution', () => {
     const targets: ResolvedTargetDto[] = [
       {
         targetId: 'target-primary',
-        provider: 'anthropic',
+        provider: 'test-provider',
         upstreamModelId: 'primary-model',
         priority: 1,
         weight: 100,
@@ -46,7 +46,7 @@ describe('DispatchModelUseCase - Streaming Execution', () => {
     const basePayload: GatewayDispatchPayload = {
       requestId: 'req-stream-1',
       correlationId: 'corr-stream-1',
-      canonicalModelId: 'claude-sonnet',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       version: '1.0.0',
       stream: true,
       messages: [{ role: 'user', content: 'Stream me a story' }],
@@ -68,7 +68,14 @@ describe('DispatchModelUseCase - Streaming Execution', () => {
       actorId: 'test-actor',
     };
 
-    return { useCase, fakeAdapterA, fakeAdapterB, basePayload };
+    return {
+      useCase,
+      adapterRegistry,
+      circuitBreakerStore,
+      fakeAdapterA,
+      fakeAdapterB,
+      basePayload,
+    };
   }
 
   it('streams tokens and finishes cleanly', async () => {
@@ -96,6 +103,41 @@ describe('DispatchModelUseCase - Streaming Execution', () => {
     expect(events[0]?.event).toBe('token');
     expect(events[3]?.event).toBe('finish');
     expect(fakeAdapterA.streamCalls).toHaveLength(1);
+  });
+
+  it('publishes authoritative usage before yielding the finish event', async () => {
+    const fixture = createStreamingFixture();
+    const order: string[] = [];
+    fixture.fakeAdapterA.setStreamEvents([
+      { event: 'token', data: { delta: 'ok' } },
+      {
+        event: 'finish',
+        data: {
+          finishReason: 'stop',
+          usage: { promptTokens: 2, completionTokens: 1, totalTokens: 3 },
+        },
+      },
+    ]);
+    const useCase = new DispatchModelUseCase({
+      adapterRegistry: fixture.adapterRegistry,
+      circuitBreakerStore: fixture.circuitBreakerStore,
+      usagePublisher: {
+        async start() {},
+        isReady: () => true,
+        async close() {},
+        async publish(event) {
+          order.push(`usage:${event.measurements['tokens.total']}`);
+        },
+      },
+    });
+    for await (const event of useCase.executeStream({
+      ...fixture.basePayload,
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+    })) {
+      order.push(event.event);
+    }
+    expect(order).toEqual(['token', 'usage:3', 'finish']);
   });
 
   it('falls back to secondary target if primary fails BEFORE any token is emitted', async () => {
@@ -151,6 +193,47 @@ describe('DispatchModelUseCase - Streaming Execution', () => {
 
     // Adapter B must NEVER be called
     expect(fakeAdapterB.streamCalls).toHaveLength(0);
+  });
+
+  it('publishes a bounded best-known usage event when a provider stream fails', async () => {
+    const fixture = createStreamingFixture();
+    const published: Array<{
+      measurements: Record<string, number>;
+      dimensions: Record<string, string>;
+    }> = [];
+    fixture.fakeAdapterA.setStreamEvents([
+      { event: 'token', data: { delta: 'partial' } },
+      { event: 'error', data: { code: 'CONNECTION_RESET', message: 'provider disconnected' } },
+    ]);
+    const useCase = new DispatchModelUseCase({
+      adapterRegistry: fixture.adapterRegistry,
+      circuitBreakerStore: fixture.circuitBreakerStore,
+      usagePublisher: {
+        async start() {},
+        isReady: () => true,
+        async close() {},
+        async publish(event) {
+          published.push({
+            measurements: event.measurements as Record<string, number>,
+            dimensions: event.dimensions as Record<string, string>,
+          });
+        },
+      },
+    });
+
+    const events: StreamEvent[] = [];
+    for await (const event of useCase.executeStream({
+      ...fixture.basePayload,
+      tenantId: 'tenant-1',
+      userId: 'user-1',
+    }))
+      events.push(event);
+
+    expect(events.map((event) => event.event)).toEqual(['token', 'error']);
+    expect(published).toHaveLength(1);
+    expect(published[0]?.measurements['units.requests']).toBe(1);
+    expect(published[0]?.measurements['tokens.total']).toBe(0);
+    expect(published[0]?.dimensions['outcome']).toBe('STREAM_INTERRUPTED');
   });
 
   it('propagates cancellation signal to provider when stream is aborted', async () => {

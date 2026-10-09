@@ -12,15 +12,15 @@ import { FakeProviderAdapter } from '../test-doubles/fake-provider-adapter.js';
 describe('Reasoning Privacy Boundary (Invariant 7)', () => {
   const target: ResolvedTargetDto = {
     targetId: 't-1',
-    provider: 'anthropic',
-    upstreamModelId: 'claude-3-7-sonnet',
+    provider: 'test-provider',
+    upstreamModelId: 'provider-model-alpha-v2',
     priority: 1,
     weight: 100,
     supportsStreaming: true,
   };
 
   it('filters thinking blocks from unary response by default (exposeReasoning omitted or false)', async () => {
-    const adapter = new FakeProviderAdapter('anthropic');
+    const adapter = new FakeProviderAdapter('test-provider');
     const registry = new InMemoryAdapterRegistry();
     registry.register(adapter);
 
@@ -50,7 +50,7 @@ describe('Reasoning Privacy Boundary (Invariant 7)', () => {
     const payload: GatewayDispatchPayload = {
       requestId: 'req-priv-1',
       correlationId: 'corr-priv-1',
-      canonicalModelId: 'claude-sonnet',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       version: '1.0.0',
       stream: false,
       exposeReasoning: false,
@@ -79,7 +79,7 @@ describe('Reasoning Privacy Boundary (Invariant 7)', () => {
   });
 
   it('preserves thinking blocks in unary response when exposeReasoning is true', async () => {
-    const adapter = new FakeProviderAdapter('anthropic');
+    const adapter = new FakeProviderAdapter('test-provider');
     const registry = new InMemoryAdapterRegistry();
     registry.register(adapter);
 
@@ -108,7 +108,7 @@ describe('Reasoning Privacy Boundary (Invariant 7)', () => {
     const payload: GatewayDispatchPayload = {
       requestId: 'req-priv-2',
       correlationId: 'corr-priv-2',
-      canonicalModelId: 'claude-sonnet',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       version: '1.0.0',
       stream: false,
       exposeReasoning: true,
@@ -136,7 +136,7 @@ describe('Reasoning Privacy Boundary (Invariant 7)', () => {
   });
 
   it('drops thinking events from streaming response when exposeReasoning is not true', async () => {
-    const adapter = new FakeProviderAdapter('anthropic');
+    const adapter = new FakeProviderAdapter('test-provider');
     const registry = new InMemoryAdapterRegistry();
     registry.register(adapter);
 
@@ -160,7 +160,7 @@ describe('Reasoning Privacy Boundary (Invariant 7)', () => {
     const payload: GatewayDispatchPayload = {
       requestId: 'req-priv-3',
       correlationId: 'corr-priv-3',
-      canonicalModelId: 'claude-sonnet',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       version: '1.0.0',
       stream: true,
       exposeReasoning: false,
@@ -189,7 +189,7 @@ describe('Reasoning Privacy Boundary (Invariant 7)', () => {
   });
 
   it('forwards thinking events in stream when exposeReasoning is true', async () => {
-    const adapter = new FakeProviderAdapter('anthropic');
+    const adapter = new FakeProviderAdapter('test-provider');
     const registry = new InMemoryAdapterRegistry();
     registry.register(adapter);
 
@@ -213,7 +213,7 @@ describe('Reasoning Privacy Boundary (Invariant 7)', () => {
     const payload: GatewayDispatchPayload = {
       requestId: 'req-priv-4',
       correlationId: 'corr-priv-4',
-      canonicalModelId: 'claude-sonnet',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       version: '1.0.0',
       stream: true,
       exposeReasoning: true,

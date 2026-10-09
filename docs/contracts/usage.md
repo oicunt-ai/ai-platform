@@ -79,7 +79,7 @@ To maintain architectural purity across the OICUNT enterprise, the boundaries of
 | **Subscription Management**         | **Subscriptions Service**      | Tier definitions (Free, Pro, Enterprise), seat counts, renewal dates, and subscription status are commercial state machines.                                                              |
 | **Entitlement & Quota Enforcement** | **Entitlements / Gateway**     | Evaluating whether a tenant is permitted to perform an action (e.g. rate limits, feature gates, hard spend caps) occurs at ingress or gateway boundaries, not in post-execution metering. |
 | **Runtime Execution**               | **Inference / Tools / Agents** | Usage does not run models, sandboxes, or agent loops.                                                                                                                                     |
-| **Model Routing & Provider Egress** | **Model Gateway**              | Usage never calls external model providers (OpenAI, Anthropic, Google, AWS) and imports zero provider SDKs.                                                                               |
+| **Model Routing & Provider Egress** | **Model Gateway**              | Usage never calls external model providers (OpenAI, upstream provider, Google, AWS) and imports zero provider SDKs.                                                                       |
 | **Tool Execution & Sandboxing**     | **Tools Service**              | Usage never manages microVMs, WASM runtimes, or network firewalls.                                                                                                                        |
 
 ### 2.3 The Four Questions of Platform Commercialization
@@ -156,7 +156,7 @@ export interface UsageEvent {
 
   /**
    * Canonical platform resource identifier associated with the consumption.
-   * Canonical model ID (e.g. 'oicunt.model.anthropic.claude-3-5-sonnet'),
+   * Canonical model ID (e.g. 'oicunt.model.catalog-alpha'),
    * Canonical tool ID (e.g. 'oicunt.tool.code-sandbox'),
    * or Agent ID (e.g. 'agent_researcher_v2').
    */
@@ -265,16 +265,16 @@ export interface UsageEventLineage {
 
 ## 4. Normalized AI Usage Model
 
-Upstream AI model providers (OpenAI, Anthropic, Google Gemini, AWS Bedrock, Mistral) expose token accounting with divergent schemas, terminology, and granularity. The Usage Service enforces **strict normalization** at the ingest boundary:
+Upstream AI model providers (OpenAI, upstream provider, Google Gemini, AWS Bedrock, Mistral) expose token accounting with divergent schemas, terminology, and granularity. The Usage Service enforces **strict normalization** at the ingest boundary:
 
 ### 4.1 Token Normalization Standards
 
 1. **Input Tokens (`tokens.input`)**: Normalized prompt tokens consumed by the model.
 2. **Output Tokens (`tokens.output`)**: Normalized completion tokens produced by the model.
 3. **Total Tokens (`tokens.total`)**: Canonical total tokens. If the source provider provides total tokens, it is recorded; otherwise, `tokens.input + tokens.output` is computed.
-4. **Cached Input Tokens (`tokens.cached_input`)**: When a provider supports prompt caching (e.g. Anthropic prompt caching, OpenAI cached prompt tokens), tokens retrieved from cache are recorded explicitly under this key.
+4. **Cached Input Tokens (`tokens.cached_input`)**: When a provider supports prompt caching (e.g. upstream provider prompt caching, OpenAI cached prompt tokens), tokens retrieved from cache are recorded explicitly under this key.
 5. **Cache Creation Tokens (`tokens.cache_creation`)**: Tokens written to cache on cold prompt evaluation.
-6. **Reasoning Tokens (`tokens.reasoning`)**: Extended thinking or reasoning tokens reported in model completion metadata (e.g. OpenAI o-series `reasoning_tokens`, Anthropic thinking budget tokens). **Only the numerical token count is recorded; raw reasoning traces are never captured.**
+6. **Reasoning Tokens (`tokens.reasoning`)**: Extended thinking or reasoning tokens reported in model completion metadata (e.g. OpenAI o-series `reasoning_tokens`, upstream provider thinking budget tokens). **Only the numerical token count is recorded; raw reasoning traces are never captured.**
 7. **Vector Embedding Tokens (`tokens.embedding`)**: Input tokens converted to vector space during embedding generation.
 8. **Vector Count (`units.vectors`)**: Quantitative count of discrete vector embeddings generated in the operation or batch.
 9. **Embedding Dimensions as Metadata (`dimensions.embedding_dimension`)**: The vector dimensionality (e.g. 1536, 3072) is a resource property and configuration characteristic, not a consumption unit. It must be captured in categorical `dimensions` (e.g. `dimensions.embedding_dimension = 1536`), never as a quantitative metric in `measurements`.
@@ -282,7 +282,7 @@ Upstream AI model providers (OpenAI, Anthropic, Google Gemini, AWS Bedrock, Mist
 ### 4.2 Handling Missing or Uneven Provider Metrics
 
 - **Zero Invention Rule**: If an upstream model target does not report reasoning tokens, cached tokens, or compute duration, the Usage Service **must not invent, estimate, or assume values**. The corresponding measurement field remains `undefined`.
-- **Provider-Neutral Identification**: The `resourceId` is **always** the canonical OICUNT model identifier (e.g. `oicunt.model.anthropic.claude-3-5-sonnet`), never an upstream vendor string (`claude-3-5-sonnet-20241022`). The upstream vendor target is captured solely as a categorical dimension (`dimensions.provider = 'anthropic'`).
+- **Provider-Neutral Identification**: The `resourceId` is **always** the canonical OICUNT model identifier (e.g. `oicunt.model.catalog-alpha`), never an upstream vendor string (`provider-model-alpha-v1`). The upstream vendor target is captured solely as a categorical dimension (`dimensions.provider = 'test-provider'`).
 
 ---
 
@@ -659,7 +659,7 @@ Every runtime subsystem integrates with the Usage Service by emitting a standard
 - **Trigger**: Dispatched completion stream finishes or unary completion succeeds.
 - **Source Service**: `model-gateway`
 - **Operation**: `model.completion`
-- **Resource ID**: Canonical model ID (e.g. `oicunt.model.anthropic.claude-3-5-sonnet`)
+- **Resource ID**: Canonical model ID (e.g. `oicunt.model.catalog-alpha`)
 - **Measurements**: `tokens.input`, `tokens.output`, `tokens.total`, `tokens.cached_input`, `tokens.reasoning`, `duration.total_ms`, `units.requests = 1`.
 - **Dimensions**: `provider`, `model_tier`, `finish_reason`.
 - **Deduplication Key**: `mod_${requestId}_${dispatchAttempt}`

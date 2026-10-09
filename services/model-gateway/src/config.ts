@@ -10,11 +10,6 @@ export interface CircuitBreakerOptions {
 
 export type RetryPolicyOptions = RetryPolicyConfig;
 
-export interface AnthropicProviderConfig {
-  readonly apiKey?: string | undefined;
-  readonly baseUrl?: string | undefined;
-}
-
 export interface ModelGatewayConfig {
   readonly serviceName: string;
   readonly environment: Environment;
@@ -29,8 +24,10 @@ export interface ModelGatewayConfig {
   readonly defaultTimeoutMs: number;
   readonly circuitBreaker: CircuitBreakerOptions;
   readonly retryPolicy: RetryPolicyOptions;
-  readonly anthropic?: AnthropicProviderConfig | undefined;
   readonly internalToken?: string | undefined;
+  readonly rabbitmqUrl?: string | undefined;
+  readonly usageExchange: string;
+  readonly enableUsagePublishing?: boolean | undefined;
 }
 
 export function resolveEnvironment(raw?: string): Environment {
@@ -68,7 +65,7 @@ export function loadModelGatewayConfig(
       ? process.env['ALLOWED_SERVICE_IDENTITIES'].split(',').map((s) => s.trim())
       : ['inference', 'ai-orchestrator', 'ai-platform-admin']);
 
-  return {
+  const config: ModelGatewayConfig = {
     serviceName: overrides?.serviceName ?? 'model-gateway',
     environment: env,
     port,
@@ -80,8 +77,15 @@ export function loadModelGatewayConfig(
     allowedServiceIdentities: allowedServices,
     internalToken:
       overrides?.internalToken ??
+      process.env['MODEL_GATEWAY_INTERNAL_TOKEN'] ??
       process.env['INTERNAL_SERVICE_TOKEN'] ??
       process.env['INTERNAL_SERVICE_SECRET'],
+    rabbitmqUrl: overrides?.rabbitmqUrl ?? process.env['RABBITMQ_URL'],
+    usageExchange:
+      overrides?.usageExchange ?? process.env['USAGE_RABBITMQ_EXCHANGE'] ?? 'oicunt.usage',
+    enableUsagePublishing:
+      overrides?.enableUsagePublishing ??
+      (env === 'production' || process.env['ENABLE_USAGE_PUBLISHING'] === 'true'),
     maxBodySizeBytes: overrides?.maxBodySizeBytes ?? 1048576,
     defaultTimeoutMs: overrides?.defaultTimeoutMs ?? 120000,
     circuitBreaker: {
@@ -113,9 +117,19 @@ export function loadModelGatewayConfig(
         Number.parseInt(process.env['MAX_BACKOFF_DELAY_MS'] ?? '8000', 10),
       backoffMultiplier: overrides?.retryPolicy?.backoffMultiplier ?? 2.0,
     },
-    anthropic: {
-      apiKey: overrides?.anthropic?.apiKey ?? process.env['ANTHROPIC_API_KEY'],
-      baseUrl: overrides?.anthropic?.baseUrl ?? process.env['ANTHROPIC_BASE_URL'],
-    },
   };
+
+  if (env === 'production') {
+    const missing = [
+      ['MODEL_GATEWAY_INTERNAL_TOKEN', config.internalToken],
+      ['RABBITMQ_URL', config.rabbitmqUrl],
+    ].filter(([, value]) => !value || value.trim().length === 0);
+    if (missing.length > 0) {
+      throw new Error(
+        `Model Gateway production configuration is incomplete: ${missing.map(([name]) => name).join(', ')}`,
+      );
+    }
+  }
+
+  return config;
 }

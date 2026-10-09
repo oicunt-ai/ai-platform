@@ -22,6 +22,8 @@ import {
 import type { GatewayDispatchPayload, ResolvedTargetDto } from '../dtos/dispatch.dto.js';
 import type { AdapterRegistryPort } from '../ports/adapter-registry.port.js';
 import type { CircuitBreakerStorePort } from '../ports/circuit-breaker-store.port.js';
+import type { UsagePublisherPort } from '../ports/usage-publisher.port.js';
+import type { UsageEvent } from '@oicunt-ai/usage-types';
 
 export interface DispatchModelUseCaseDependencies {
   readonly adapterRegistry: AdapterRegistryPort;
@@ -30,6 +32,7 @@ export interface DispatchModelUseCaseDependencies {
   readonly metrics?: AiMetricsRecorder | undefined;
   readonly retryPolicy?: RetryPolicyConfig | undefined;
   readonly defaultTimeoutMs?: number | undefined;
+  readonly usagePublisher?: UsagePublisherPort | undefined;
 }
 
 export class DispatchModelUseCase {
@@ -39,6 +42,7 @@ export class DispatchModelUseCase {
   private readonly metrics: AiMetricsRecorder;
   private readonly retryPolicy: RetryPolicyConfig;
   private readonly defaultTimeoutMs: number;
+  private readonly usagePublisher?: UsagePublisherPort | undefined;
 
   constructor(deps: DispatchModelUseCaseDependencies) {
     this.adapterRegistry = deps.adapterRegistry;
@@ -46,6 +50,7 @@ export class DispatchModelUseCase {
     this.tracer = deps.tracer ?? new NoopAiTracer();
     this.metrics = deps.metrics ?? new NoopAiMetricsRecorder();
     this.defaultTimeoutMs = deps.defaultTimeoutMs ?? 120000;
+    this.usagePublisher = deps.usagePublisher;
     this.retryPolicy = deps.retryPolicy ?? {
       maxAttemptsPerTarget: 3,
       maxFallbackAttempts: 2,
@@ -107,6 +112,7 @@ export class DispatchModelUseCase {
         const completionId = randomUUID();
         const { signal, cleanup, attemptTimeoutMs } = budget.createAttemptSignal();
         const startTime = Date.now();
+        let providerFinished = false;
 
         try {
           const rawResult = await adapter.executeUnary({
@@ -123,6 +129,8 @@ export class DispatchModelUseCase {
           breaker.recordSuccess();
 
           const sanitizedResult = this.applyReasoningPrivacyUnary(rawResult, payload);
+          providerFinished = true;
+          await this.publishUsage(payload, target, sanitizedResult);
           this.recordTelemetry(payload, target, sanitizedResult, Date.now() - startTime);
 
           return sanitizedResult;
@@ -131,6 +139,14 @@ export class DispatchModelUseCase {
           breaker.recordFailure();
 
           const normalized = this.normalizeError(err, payload, target.targetId);
+          if (!providerFinished) {
+            await this.publishFailedAttemptUsageBounded(
+              payload,
+              target,
+              completionId,
+              normalized.code,
+            );
+          }
 
           if (parentSignal?.aborted || normalized.code === 'REQUEST_CANCELLED') {
             throw new RequestCancelledError(payload.canonicalModelId, payload.correlationId);
@@ -256,6 +272,7 @@ export class DispatchModelUseCase {
 
         const completionId = randomUUID();
         const { signal, cleanup, attemptTimeoutMs } = budget.createAttemptSignal();
+        let providerFinished = false;
 
         try {
           const rawStream = adapter.executeStream({
@@ -285,6 +302,15 @@ export class DispatchModelUseCase {
             }
 
             if (event.event === 'finish') {
+              providerFinished = true;
+              await this.publishUsage(payload, target, {
+                completionId,
+                model: payload.canonicalModelId,
+                message: { role: 'assistant', content: '' },
+                finishReason: event.data.finishReason,
+                usage: event.data.usage,
+                latencyMs: 0,
+              });
               breaker.recordSuccess();
               yield event;
               cleanup();
@@ -308,6 +334,14 @@ export class DispatchModelUseCase {
 
           const normalized = this.normalizeError(err, payload, target.targetId);
           lastError = normalized;
+          if (!providerFinished) {
+            await this.publishFailedAttemptUsageBounded(
+              payload,
+              target,
+              completionId,
+              normalized.code,
+            );
+          }
 
           // Invariant 7: If any event was already yielded, retrying or falling back is prohibited
           if (hasYieldedToCaller) {
@@ -564,6 +598,105 @@ export class DispatchModelUseCase {
       this.metrics.recordEstimatedCost(payload.canonicalModelId, costUsd, {
         provider: target.provider,
       });
+    }
+  }
+
+  private async publishUsage(
+    payload: GatewayDispatchPayload,
+    target: ResolvedTargetDto,
+    completion: NormalizedCompletionData,
+  ): Promise<void> {
+    if (!this.usagePublisher) return;
+    if (!payload.tenantId)
+      throw new InternalGatewayError(
+        payload.canonicalModelId,
+        payload.correlationId,
+        'Tenant context is required for usage accounting',
+      );
+    const event: UsageEvent = {
+      eventId: `usage_${completion.completionId}`,
+      schemaVersion: '1.0.0',
+      tenantId: payload.tenantId,
+      userId: payload.userId,
+      actorId: payload.actorId,
+      productId: 'billy',
+      sourceService: 'model-gateway',
+      operation: 'model.completion',
+      resourceId: payload.canonicalModelId,
+      measurements: {
+        'tokens.input': completion.usage.promptTokens,
+        'tokens.output': completion.usage.completionTokens,
+        'tokens.total': completion.usage.totalTokens,
+        'units.requests': 1,
+      },
+      dimensions: {
+        provider: target.provider,
+        targetId: target.targetId,
+        finishReason: completion.finishReason,
+      },
+      lineage: {
+        correlationId: payload.correlationId,
+        requestId: payload.requestId,
+        sessionId: payload.conversationId,
+      },
+      idempotencyKey: `model.completion:${completion.completionId}`,
+      occurredAt: new Date().toISOString(),
+    };
+    await this.usagePublisher.publish(event);
+  }
+
+  private async publishFailedAttemptUsageBounded(
+    payload: GatewayDispatchPayload,
+    target: ResolvedTargetDto,
+    completionId: string,
+    outcome: string,
+  ): Promise<void> {
+    if (!this.usagePublisher || !payload.tenantId) return;
+    const event: UsageEvent = {
+      eventId: `usage_${completionId}`,
+      schemaVersion: '1.0.0',
+      tenantId: payload.tenantId,
+      userId: payload.userId,
+      actorId: payload.actorId,
+      productId: 'billy',
+      sourceService: 'model-gateway',
+      operation: 'model.completion',
+      resourceId: payload.canonicalModelId,
+      measurements: {
+        'tokens.input': 0,
+        'tokens.output': 0,
+        'tokens.total': 0,
+        'units.requests': 1,
+      },
+      dimensions: {
+        provider: target.provider,
+        targetId: target.targetId,
+        outcome,
+      },
+      lineage: {
+        correlationId: payload.correlationId,
+        requestId: payload.requestId,
+        sessionId: payload.conversationId,
+      },
+      idempotencyKey: `model.completion:${completionId}`,
+      occurredAt: new Date().toISOString(),
+    };
+    let timeout: NodeJS.Timeout | undefined;
+    try {
+      await Promise.race([
+        this.usagePublisher.publish(event),
+        new Promise<never>((_, reject) => {
+          timeout = setTimeout(
+            () => reject(new Error('Usage cleanup publication timed out')),
+            2000,
+          );
+        }),
+      ]);
+    } catch {
+      // The provider request already failed. Metering cleanup is best effort and bounded;
+      // successful completions still require broker confirmation before finish is emitted.
+    } finally {
+      if (timeout) clearTimeout(timeout);
     }
   }
 }

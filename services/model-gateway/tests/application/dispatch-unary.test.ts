@@ -24,7 +24,7 @@ describe('DispatchModelUseCase - Unary Execution', () => {
       cooldownPeriodMs: 30000,
     });
 
-    const fakeAdapterA = new FakeProviderAdapter('anthropic');
+    const fakeAdapterA = new FakeProviderAdapter('test-provider');
     const fakeAdapterB = new FakeProviderAdapter('openai');
     adapterRegistry.register(fakeAdapterA);
     adapterRegistry.register(fakeAdapterB);
@@ -37,7 +37,7 @@ describe('DispatchModelUseCase - Unary Execution', () => {
     const defaultTargets: ResolvedTargetDto[] = [
       {
         targetId: 'target-primary',
-        provider: 'anthropic',
+        provider: 'test-provider',
         upstreamModelId: 'primary-model',
         priority: 1,
         weight: 100,
@@ -58,7 +58,7 @@ describe('DispatchModelUseCase - Unary Execution', () => {
     const basePayload: GatewayDispatchPayload = {
       requestId: 'req-1',
       correlationId: 'corr-1',
-      canonicalModelId: 'claude-sonnet',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       version: '1.0.0',
       stream: false,
       messages: [{ role: 'user', content: 'Hello world' }],
@@ -99,7 +99,7 @@ describe('DispatchModelUseCase - Unary Execution', () => {
 
     // 1st call fails with 429 RateLimit, 2nd call succeeds
     fakeAdapterA.enqueueUnaryResponse(async () => {
-      throw new RateLimitExceededError('claude-sonnet', 'corr-1', 'target-primary');
+      throw new RateLimitExceededError('oicunt.model.catalog-alpha', 'corr-1', 'target-primary');
     });
 
     const result = await useCase.executeUnary(basePayload);
@@ -113,13 +113,13 @@ describe('DispatchModelUseCase - Unary Execution', () => {
 
     // Primary target fails all 3 attempts
     fakeAdapterA.enqueueUnaryResponse(async () => {
-      throw new ModelUnavailableError('claude-sonnet', 'corr-1', 'target-primary');
+      throw new ModelUnavailableError('oicunt.model.catalog-alpha', 'corr-1', 'target-primary');
     });
     fakeAdapterA.enqueueUnaryResponse(async () => {
-      throw new ModelUnavailableError('claude-sonnet', 'corr-1', 'target-primary');
+      throw new ModelUnavailableError('oicunt.model.catalog-alpha', 'corr-1', 'target-primary');
     });
     fakeAdapterA.enqueueUnaryResponse(async () => {
-      throw new ModelUnavailableError('claude-sonnet', 'corr-1', 'target-primary');
+      throw new ModelUnavailableError('oicunt.model.catalog-alpha', 'corr-1', 'target-primary');
     });
 
     const result = await useCase.executeUnary(basePayload);
@@ -133,7 +133,7 @@ describe('DispatchModelUseCase - Unary Execution', () => {
     const { useCase, fakeAdapterA, fakeAdapterB, basePayload } = createFixture();
 
     fakeAdapterA.enqueueUnaryResponse(async () => {
-      throw new ContextWindowExceededError('claude-sonnet', 'corr-1', {
+      throw new ContextWindowExceededError('oicunt.model.catalog-alpha', 'corr-1', {
         exceededBy: 5000,
       });
     });
@@ -167,23 +167,23 @@ describe('DispatchModelUseCase - Unary Execution', () => {
     const { useCase, fakeAdapterA, fakeAdapterB, basePayload } = createFixture();
 
     fakeAdapterA.enqueueUnaryResponse(async () => {
-      throw new ModelUnavailableError('claude-sonnet', 'corr-1', 'target-primary');
+      throw new ModelUnavailableError('oicunt.model.catalog-alpha', 'corr-1', 'target-primary');
     });
     fakeAdapterA.enqueueUnaryResponse(async () => {
-      throw new ModelUnavailableError('claude-sonnet', 'corr-1', 'target-primary');
+      throw new ModelUnavailableError('oicunt.model.catalog-alpha', 'corr-1', 'target-primary');
     });
     fakeAdapterA.enqueueUnaryResponse(async () => {
-      throw new ModelUnavailableError('claude-sonnet', 'corr-1', 'target-primary');
+      throw new ModelUnavailableError('oicunt.model.catalog-alpha', 'corr-1', 'target-primary');
     });
 
     fakeAdapterB.enqueueUnaryResponse(async () => {
-      throw new ModelUnavailableError('claude-sonnet', 'corr-1', 'target-secondary');
+      throw new ModelUnavailableError('oicunt.model.catalog-alpha', 'corr-1', 'target-secondary');
     });
     fakeAdapterB.enqueueUnaryResponse(async () => {
-      throw new ModelUnavailableError('claude-sonnet', 'corr-1', 'target-secondary');
+      throw new ModelUnavailableError('oicunt.model.catalog-alpha', 'corr-1', 'target-secondary');
     });
     fakeAdapterB.enqueueUnaryResponse(async () => {
-      throw new ModelUnavailableError('claude-sonnet', 'corr-1', 'target-secondary');
+      throw new ModelUnavailableError('oicunt.model.catalog-alpha', 'corr-1', 'target-secondary');
     });
 
     await expect(useCase.executeUnary(basePayload)).rejects.toThrow(AllTargetsExhaustedError);
@@ -233,9 +233,9 @@ describe('DispatchModelUseCase - Unary Execution', () => {
   it('aborts retry backoff sleep immediately when parentSignal fires during backoff delay', async () => {
     const adapterRegistry = new InMemoryAdapterRegistry();
     const circuitBreakerStore = new InMemoryCircuitBreakerStore();
-    const fakeAdapterA = new FakeProviderAdapter('anthropic', {
+    const fakeAdapterA = new FakeProviderAdapter('test-provider', {
       unaryHandler: async () => {
-        throw new RateLimitExceededError('claude-sonnet', 'corr-1', 'target-primary');
+        throw new RateLimitExceededError('oicunt.model.catalog-alpha', 'corr-1', 'target-primary');
       },
     });
     const fakeAdapterB = new FakeProviderAdapter('openai');
@@ -268,7 +268,7 @@ describe('DispatchModelUseCase - Unary Execution', () => {
   it('respects injected retryPolicy overriding default attempt limits', async () => {
     const adapterRegistry = new InMemoryAdapterRegistry();
     const circuitBreakerStore = new InMemoryCircuitBreakerStore();
-    const fakeAdapterA = new FakeProviderAdapter('anthropic');
+    const fakeAdapterA = new FakeProviderAdapter('test-provider');
     const fakeAdapterB = new FakeProviderAdapter('openai');
     adapterRegistry.register(fakeAdapterA);
     adapterRegistry.register(fakeAdapterB);
@@ -288,7 +288,7 @@ describe('DispatchModelUseCase - Unary Execution', () => {
     });
 
     fakeAdapterA.enqueueUnaryResponse(async () => {
-      throw new RateLimitExceededError('claude-sonnet', 'corr-1', 'target-primary');
+      throw new RateLimitExceededError('oicunt.model.catalog-alpha', 'corr-1', 'target-primary');
     });
 
     const { basePayload } = createFixture();

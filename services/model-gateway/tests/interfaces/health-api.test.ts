@@ -1,6 +1,8 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import { ModelGatewayService } from '../../src/service.js';
 import { loadModelGatewayConfig } from '../../src/config.js';
+import { InMemoryAdapterRegistry } from '../../src/infrastructure/adapters/in-memory-adapter-registry.js';
+import { FakeProviderAdapter } from '../test-doubles/fake-provider-adapter.js';
 
 describe('Model Gateway HTTP Health API', () => {
   let service: ModelGatewayService;
@@ -12,6 +14,7 @@ describe('Model Gateway HTTP Health API', () => {
         port: 0,
         logLevel: 'silent',
       }),
+      adapterRegistry: new InMemoryAdapterRegistry([new FakeProviderAdapter('test-provider')]),
     });
     port = await service.start();
   });
