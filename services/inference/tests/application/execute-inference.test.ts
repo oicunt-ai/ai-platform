@@ -14,7 +14,7 @@ describe('Application - ExecuteInferenceUseCase', () => {
     actorId: 'test-user',
     version: '1.0.0',
     stream: false,
-    canonicalModelId: 'claude-sonnet',
+    canonicalModelId: 'oicunt.model.catalog-alpha',
     messages: [{ role: 'user', content: 'Explain quantum computing in one sentence.' }],
     limits: {
       contextWindowTokens: 200_000,
@@ -45,7 +45,7 @@ describe('Application - ExecuteInferenceUseCase', () => {
       const response = await useCase.executeUnary(baseRequest, baseContext);
 
       expect(response.success).toBe(true);
-      expect(response.data.model).toBe('claude-sonnet');
+      expect(response.data.model).toBe('oicunt.model.catalog-alpha');
       expect(response.data.finishReason).toBe('stop');
       expect(response.data.usage.totalTokens).toBe(45);
       expect(response.data.metadata.estimatedCostUsd).toBeDefined();
@@ -96,12 +96,12 @@ describe('Application - ExecuteInferenceUseCase', () => {
       const testHook: InferenceHookPort = {
         beforeExecution: async (req, signal) => {
           beforeCalled = true;
-          expect(req.canonicalModelId).toBe('claude-sonnet');
+          expect(req.canonicalModelId).toBe('oicunt.model.catalog-alpha');
           expect(signal).toBeDefined();
         },
         afterExecution: async (_req, result, signal) => {
           afterCalled = true;
-          expect(result.model).toBe('claude-sonnet');
+          expect(result.model).toBe('oicunt.model.catalog-alpha');
           expect(signal).toBeDefined();
         },
       };
@@ -263,7 +263,7 @@ describe('Application - ExecuteInferenceUseCase', () => {
       });
 
       const arbitraryTargets = [
-        { targetId: 't-primary', provider: 'anthropic', customGatewayParam: 42 },
+        { targetId: 't-primary', provider: 'test-provider', customGatewayParam: 42 },
         { targetId: 't-secondary', provider: 'bedrock', customGatewayParam: 99 },
       ];
       const arbitraryRoutingPolicy = {

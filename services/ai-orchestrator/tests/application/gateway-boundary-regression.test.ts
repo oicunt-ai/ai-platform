@@ -50,7 +50,7 @@ describe('Regression - Gateway Boundary Isolation', () => {
 
     const response = await useCase.executeUnary(
       {
-        model: 'claude-sonnet',
+        model: 'oicunt.model.catalog-alpha',
         messages: [{ role: 'user', content: 'Regression test query' }],
         tools: [
           {
@@ -67,7 +67,7 @@ describe('Regression - Gateway Boundary Isolation', () => {
     expect(fakeInference.recordedRequests).toHaveLength(1);
 
     const inferenceReq = fakeInference.recordedRequests[0]!;
-    expect(inferenceReq.canonicalModelId).toBe('claude-sonnet');
+    expect(inferenceReq.canonicalModelId).toBe('oicunt.model.catalog-alpha');
     expect(inferenceReq.version).toBe('v1.0.0');
     expect(inferenceReq.stream).toBe(false);
     expect(inferenceReq.effort).toBe('medium');
@@ -97,7 +97,7 @@ describe('Regression - Gateway Boundary Isolation', () => {
 
     const stream = useCase.executeStream(
       {
-        model: 'claude-sonnet',
+        model: 'oicunt.model.catalog-alpha',
         messages: [{ role: 'user', content: 'Regression streaming query' }],
         stream: true,
       },

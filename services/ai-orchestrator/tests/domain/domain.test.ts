@@ -84,7 +84,7 @@ describe('Domain - CostCalculator', () => {
 describe('Domain - Errors', () => {
   it('instantiates domain errors with correct HTTP status codes and payloads', () => {
     const err = new UnsupportedEffortLevelError(
-      'claude-sonnet',
+      'oicunt.model.catalog-alpha',
       'max',
       ['low', 'medium', 'high'],
       'corr_123',
@@ -95,27 +95,32 @@ describe('Domain - Errors', () => {
 
     const payload = err.toPayload();
     expect(payload.code).toBe('UNSUPPORTED_EFFORT_LEVEL');
-    expect(payload.canonicalModelId).toBe('claude-sonnet');
+    expect(payload.canonicalModelId).toBe('oicunt.model.catalog-alpha');
     expect(payload.correlationId).toBe('corr_123');
   });
 
   it('formats ContextWindowExceededError correctly', () => {
-    const err = new ContextWindowExceededError('claude-sonnet', 200_000, 210_000, 'corr_456');
+    const err = new ContextWindowExceededError(
+      'oicunt.model.catalog-alpha',
+      200_000,
+      210_000,
+      'corr_456',
+    );
     expect(err.statusCode).toBe(400);
     expect(err.code).toBe('CONTEXT_WINDOW_EXCEEDED');
     expect(err.details).toEqual({
-      model: 'claude-sonnet',
+      model: 'oicunt.model.catalog-alpha',
       limit: 200_000,
       estimatedTokens: 210_000,
     });
   });
 
   it('creates maintenance and exhaustion errors with retryable=true', () => {
-    const maint = new ModelInMaintenanceError('claude-sonnet');
+    const maint = new ModelInMaintenanceError('oicunt.model.catalog-alpha');
     expect(maint.statusCode).toBe(503);
     expect(maint.retryable).toBe(true);
 
-    const exhaust = new AllTargetsExhaustedError('claude-sonnet');
+    const exhaust = new AllTargetsExhaustedError('oicunt.model.catalog-alpha');
     expect(exhaust.statusCode).toBe(503);
     expect(exhaust.retryable).toBe(true);
   });

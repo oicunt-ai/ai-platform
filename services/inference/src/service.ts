@@ -36,7 +36,7 @@ export class InferenceService {
       dependencies.modelGateway ??
       new HttpModelGatewayClient({
         baseUrl: this.config.modelGatewayBaseUrl,
-        internalToken: this.config.internalToken,
+        internalToken: this.config.modelGatewayInternalToken,
       });
 
     this.hook = dependencies.hook ?? new NoopInferenceHook();
@@ -146,11 +146,14 @@ export class InferenceService {
         resolve();
         return;
       }
-      this.server.close(() => {
+      const server = this.server;
+      server.close(() => {
         this.logger.info('Inference service stopped');
         this.server = null;
         resolve();
       });
+      server.closeIdleConnections();
+      server.closeAllConnections();
     });
   }
 }

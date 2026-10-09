@@ -3,6 +3,7 @@ import type {
   ModelInvocationParameters,
   ModelLimits,
   ModelPricing,
+  ModelProviderType,
   ReasoningEffortLevel,
 } from '@oicunt-ai/model-types';
 import type { ChatMessage } from '@oicunt-ai/ai-types';
@@ -15,8 +16,7 @@ export interface GatewayToolDefinition {
 
 export interface ResolvedTargetDto {
   readonly targetId: string;
-  readonly provider:
-    'anthropic' | 'openai' | 'google' | 'bedrock' | 'azure-openai' | 'local' | 'custom';
+  readonly provider: ModelProviderType;
   readonly upstreamModelId: string;
   readonly priority: number;
   readonly weight: number;

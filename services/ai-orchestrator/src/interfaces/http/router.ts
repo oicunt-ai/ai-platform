@@ -3,9 +3,11 @@ import { authenticateInternalRequest } from './auth.js';
 import { extractRequestContext } from './context.js';
 import { sendLivenessResponse, sendReadinessResponse } from './health.js';
 import type { ChatController } from './controllers/chat.controller.js';
+import type { ResourcesController } from './controllers/resources.controller.js';
 
 export interface RouterDependencies {
   readonly chatController: ChatController;
+  readonly resourcesController: ResourcesController;
   readonly serviceName: string;
   readonly version: string;
   readonly isReady: () => boolean;
@@ -79,6 +81,26 @@ export function createHttpRouter(
       }
 
       (context as { serviceName?: string }).serviceName = authResult.serviceName;
+    }
+
+    if (pathname === '/internal/v1/orchestrator/catalog' && method === 'GET') {
+      await deps.resourcesController.catalog(res, context);
+      return;
+    }
+
+    if (pathname === '/internal/v1/orchestrator/conversations') {
+      if (method === 'GET' || method === 'POST') {
+        await deps.resourcesController.conversations(req, res, context);
+        return;
+      }
+    }
+
+    const messagesMatch = pathname.match(
+      /^\/internal\/v1\/orchestrator\/conversations\/([^/]+)\/messages$/,
+    );
+    if (method === 'GET' && messagesMatch?.[1]) {
+      await deps.resourcesController.messages(res, context, decodeURIComponent(messagesMatch[1]));
+      return;
     }
 
     // 3. Chat Route

@@ -14,6 +14,7 @@ import { HttpMemoryClient } from './infrastructure/clients/http-memory.client.js
 import { InMemoryMemoryClient } from './infrastructure/clients/in-memory-memory.client.js';
 import { JsonLogger } from './infrastructure/logging/logger.js';
 import { ChatController } from './interfaces/http/controllers/chat.controller.js';
+import { ResourcesController } from './interfaces/http/controllers/resources.controller.js';
 import { createHttpRouter } from './interfaces/http/router.js';
 
 export interface AiOrchestratorDependencies {
@@ -45,14 +46,14 @@ export class AiOrchestratorService {
       dependencies.modelRegistry ??
       new HttpModelRegistryClient({
         baseUrl: this.config.modelRegistryBaseUrl,
-        internalToken: this.config.internalToken,
+        internalToken: this.config.modelRegistryInternalToken,
       });
 
     this.inference =
       dependencies.inference ??
       new HttpInferenceClient({
         baseUrl: this.config.inferenceBaseUrl,
-        internalToken: this.config.internalToken,
+        internalToken: this.config.inferenceInternalToken,
       });
 
     if (dependencies.memory) {
@@ -62,7 +63,7 @@ export class AiOrchestratorService {
     } else {
       this.memory = new HttpMemoryClient({
         baseUrl: this.config.memoryBaseUrl,
-        internalToken: this.config.internalToken,
+        internalToken: this.config.memoryInternalToken,
       });
     }
 
@@ -123,6 +124,7 @@ export class AiOrchestratorService {
   public async start(): Promise<number> {
     const router = createHttpRouter({
       chatController: this.chatController,
+      resourcesController: new ResourcesController(this.modelRegistry, this.memory),
       serviceName: this.config.serviceName,
       version: this.config.version,
       isReady: () => this.ready,
@@ -195,11 +197,14 @@ export class AiOrchestratorService {
         resolve();
         return;
       }
-      this.server.close(() => {
+      const server = this.server;
+      server.close(() => {
         this.logger.info('AI Orchestrator service stopped');
         this.server = null;
         resolve();
       });
+      server.closeIdleConnections();
+      server.closeAllConnections();
     });
   }
 }

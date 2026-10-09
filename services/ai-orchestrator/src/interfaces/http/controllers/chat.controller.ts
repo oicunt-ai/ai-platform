@@ -107,9 +107,8 @@ export class ChatController {
       }
 
       if (!res.writableEnded) {
-        const errorMsg = err instanceof Error ? err.message : 'Streaming execution failed';
         res.write(
-          `event: error\ndata: ${JSON.stringify({ code: 'STREAM_INTERRUPTED', message: errorMsg })}\n\n`,
+          `event: error\ndata: ${JSON.stringify({ code: 'STREAM_INTERRUPTED', message: 'The response stream was interrupted.' })}\n\n`,
         );
       }
     } finally {

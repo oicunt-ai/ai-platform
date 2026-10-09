@@ -50,18 +50,18 @@ describe('Application - CoordinateChatTurnUseCase', () => {
     it('strictly preserves the user selected canonical model identity and maps to InferenceExecutionRequest', async () => {
       const result = await useCase.executeUnary(
         {
-          model: 'claude-sonnet',
-          messages: [{ role: 'user', content: 'Hello Claude' }],
+          model: 'oicunt.model.catalog-alpha',
+          messages: [{ role: 'user', content: 'Hello catalog model' }],
         },
         mockContext,
       );
 
       expect(result.success).toBe(true);
-      expect(result.data.model).toBe('claude-sonnet');
+      expect(result.data.model).toBe('oicunt.model.catalog-alpha');
       expect(fakeInference.recordedRequests).toHaveLength(1);
 
       const request = fakeInference.recordedRequests[0];
-      expect(request?.canonicalModelId).toBe('claude-sonnet');
+      expect(request?.canonicalModelId).toBe('oicunt.model.catalog-alpha');
       expect(request?.version).toBe('v1.0.0');
       expect(request?.stream).toBe(false);
       expect(request?.limits).toBeDefined();
@@ -95,7 +95,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
     it('applies requested effort when supported by model capabilities', async () => {
       await useCase.executeUnary(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           messages: [{ role: 'user', content: 'Solve this math problem' }],
           effort: 'high',
         },
@@ -108,7 +108,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
     it('applies defaultEffortLevel from registry when effort is omitted for reasoning model', async () => {
       await useCase.executeUnary(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           messages: [{ role: 'user', content: 'Solve this math problem' }],
         },
         mockContext,
@@ -122,7 +122,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
       await expect(
         useCase.executeUnary(
           {
-            model: 'gpt-4o', // reasoning: false in registry
+            model: 'oicunt.model.catalog-beta', // reasoning: false in registry
             messages: [{ role: 'user', content: 'Solve this' }],
             effort: 'high',
           },
@@ -137,7 +137,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
       await expect(
         useCase.executeUnary(
           {
-            model: 'claude-sonnet',
+            model: 'oicunt.model.catalog-alpha',
             messages: [{ role: 'user', content: 'Solve this' }],
             effort: 'ultra-maximum' as unknown as ReasoningEffortLevel,
           },
@@ -153,7 +153,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
     it('prepends system message when messages list does not start with system', async () => {
       await useCase.executeUnary(
         {
-          model: 'gpt-4o',
+          model: 'oicunt.model.catalog-beta',
           systemPrompt: 'You are a helpful coding assistant.',
           messages: [{ role: 'user', content: 'Write hello world' }],
         },
@@ -172,7 +172,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
     it('harmonizes with existing system message by appending delimiter', async () => {
       await useCase.executeUnary(
         {
-          model: 'gpt-4o',
+          model: 'oicunt.model.catalog-beta',
           systemPrompt: 'Follow strict formatting rules.',
           messages: [
             { role: 'system', content: 'Base instruction.' },
@@ -194,11 +194,11 @@ describe('Application - CoordinateChatTurnUseCase', () => {
   describe('Context Window Preflight Check', () => {
     it('rejects requests that exceed contextWindowTokens without invoking inference', async () => {
       // Create message that clearly exceeds limits
-      const hugePrompt = 'x'.repeat(600_000); // 600k chars -> ~150k tokens, limit is 128k for gpt-4o
+      const hugePrompt = 'x'.repeat(600_000); // 600k chars -> ~150k tokens, limit is 128k for provider-model-beta
       await expect(
         useCase.executeUnary(
           {
-            model: 'gpt-4o',
+            model: 'oicunt.model.catalog-beta',
             messages: [{ role: 'user', content: hugePrompt }],
           },
           mockContext,
@@ -214,7 +214,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
       await expect(
         useCase.executeUnary(
           {
-            model: 'model-maintenance',
+            model: 'oicunt.model.maintenance',
             messages: [{ role: 'user', content: 'Hello' }],
           },
           mockContext,
@@ -228,7 +228,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
       await expect(
         useCase.executeUnary(
           {
-            model: 'model-deprecated',
+            model: 'oicunt.model.deprecated',
             messages: [{ role: 'user', content: 'Hello' }],
           },
           mockContext,
@@ -242,7 +242,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
       await expect(
         useCase.executeUnary(
           {
-            model: 'model-no-targets',
+            model: 'oicunt.model.no-targets',
             messages: [{ role: 'user', content: 'Hello' }],
           },
           mockContext,
@@ -257,7 +257,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
     it('uses L1 cache for subsequent turns avoiding redundant registry calls', async () => {
       await useCase.executeUnary(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           messages: [{ role: 'user', content: 'First turn' }],
         },
         mockContext,
@@ -266,7 +266,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
 
       await useCase.executeUnary(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           messages: [{ role: 'user', content: 'Second turn' }],
         },
         mockContext,
@@ -278,7 +278,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
     it('bypasses L1 cache and re-queries registry when bypassCache is true', async () => {
       await useCase.executeUnary(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           messages: [{ role: 'user', content: 'First turn' }],
         },
         mockContext,
@@ -288,7 +288,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
       // Normal turn hits cache
       await useCase.executeUnary(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           messages: [{ role: 'user', content: 'Second turn' }],
         },
         mockContext,
@@ -298,7 +298,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
       // Bypass cache queries registry directly and updates cache
       await useCase.executeUnary(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           messages: [{ role: 'user', content: 'Third turn bypass' }],
         },
         { ...mockContext, bypassCache: true },
@@ -308,7 +308,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
       // Subsequent turn uses newly refreshed cache
       await useCase.executeUnary(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           messages: [{ role: 'user', content: 'Fourth turn normal' }],
         },
         mockContext,
@@ -327,7 +327,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
       await expect(
         useCase.executeUnary(
           {
-            model: 'claude-sonnet',
+            model: 'oicunt.model.catalog-alpha',
             messages: [{ role: 'user', content: 'Test prompt' }],
           },
           mockContext,
@@ -343,7 +343,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
 
       const promise = useCase.executeUnary(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           messages: [{ role: 'user', content: 'Test cancellation' }],
         },
         mockContext,
@@ -366,7 +366,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
 
       const promise = useCase.executeUnary(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           messages: [{ role: 'user', content: 'Long request' }],
         },
         mockContext,
@@ -383,7 +383,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
     it('streams events from Inference to caller in real time', async () => {
       const stream = useCase.executeStream(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           messages: [{ role: 'user', content: 'Stream this' }],
           stream: true,
           effort: 'high',
@@ -405,7 +405,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
     it('filters thinking events when exposeReasoning is false', async () => {
       const stream = useCase.executeStream(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           messages: [{ role: 'user', content: 'Stream this' }],
           stream: true,
           effort: 'high',
@@ -436,7 +436,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
 
       const stream = useCase.executeStream(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           messages: [{ role: 'user', content: 'Stream' }],
           stream: true,
         },
@@ -469,7 +469,7 @@ describe('Application - CoordinateChatTurnUseCase', () => {
       await expect(
         useCase.executeUnary(
           {
-            model: 'claude-sonnet',
+            model: 'oicunt.model.catalog-alpha',
             messages: [],
           },
           mockContext,

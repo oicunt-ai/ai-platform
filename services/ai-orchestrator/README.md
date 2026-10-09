@@ -24,7 +24,7 @@ AI Orchestrator (Coordination Plane)
           ↓
      Provider Adapter (Anti-Corruption Layer)
           ↓
-     Upstream Provider (Anthropic / OpenAI / Google)
+     Upstream Provider (upstream provider / OpenAI / Google)
 ```
 
 ### Architectural Responsibilities
@@ -41,11 +41,11 @@ AI Orchestrator (Coordination Plane)
 ## 2. Strict Architectural Invariants
 
 1. **Zero Provider SDKs & Credentials**:
-   The Orchestrator contains zero third-party provider SDKs (`@anthropic-ai/sdk`, `openai`, `@google/genai`), zero vendor tokenizers (`tiktoken`), and zero provider API keys or credentials.
+   The Orchestrator contains zero third-party provider SDKs (`a vendor SDK`, `openai`, `@google/genai`), zero vendor tokenizers (`tiktoken`), and zero provider API keys or credentials.
 2. **Sole Downstream Boundary**:
    The Orchestrator dispatches execution exclusively to the **Inference Service** (`InferencePort`). It **never calls Model Gateway directly**.
 3. **Canonical Model Identity Preservation**:
-   The user-selected canonical model (`claude-sonnet`, `gpt-4o`, `gemini-pro`, etc.) is strictly preserved and never substituted. Target-level redundancy is handled within the Model Gateway behind Inference.
+   The user-selected OICUNT catalog model ID is strictly preserved and never substituted. Target-level redundancy is handled within the Model Gateway behind Inference.
 4. **Reasoning Effort Governance**:
    Reasoning effort (`low` | `medium` | `high`) is validated against model capabilities resolved from the Model Registry.
 5. **Bounded Preflight Context Window Estimation**:

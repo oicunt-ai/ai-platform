@@ -187,6 +187,10 @@ export class HttpModelGatewayClient implements ModelGatewayPort {
         audience: 'model-gateway',
         secret: this.internalToken,
         expiresInSeconds: 300,
+        tenantId: payload.tenantId,
+        userId: payload.userId,
+        requestId: payload.requestId,
+        correlationId: payload.correlationId,
       });
       headers['Authorization'] = `Bearer ${token}`;
     }

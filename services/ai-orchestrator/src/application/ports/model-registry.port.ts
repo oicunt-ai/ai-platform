@@ -4,6 +4,10 @@ import type { ModelResolutionQuery, ModelResolutionResult } from '../dtos/resolu
  * Outbound port for interacting with the Model Registry (Control Plane).
  */
 export interface ModelRegistryPort {
+  getCatalog?(
+    context: { readonly tenantId: string; readonly correlationId: string },
+    signal?: AbortSignal | undefined,
+  ): Promise<unknown>;
   /**
    * Resolves a canonical model identity, validating capabilities, effort levels,
    * context limits, and eligible provider targets.

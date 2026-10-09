@@ -5,7 +5,7 @@ import type { ChatMessage, MessageContentPart } from '@oicunt-ai/ai-types';
  *
  * Adheres strictly to the AI Orchestrator contract:
  * - Employs lightweight, provider-neutral heuristics (~4 chars/token).
- * - NEVER imports provider-specific tokenizers (tiktoken, Anthropic, Google).
+ * - NEVER imports provider-specific tokenizers or vendor SDKs.
  * - Does not leak provider-specific quirks or internals.
  * - Leaves authoritative runtime enforcement to the Model Gateway.
  */

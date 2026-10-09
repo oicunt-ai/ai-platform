@@ -4,10 +4,10 @@ import type { ModelResolutionResult } from '../../src/application/dtos/resolutio
 
 describe('Infrastructure - InMemoryResolutionCache', () => {
   const sampleResult: ModelResolutionResult = {
-    canonicalModelId: 'claude-sonnet',
+    canonicalModelId: 'oicunt.model.catalog-alpha',
     version: 'v1.0.0',
-    displayName: 'Claude Sonnet',
-    description: 'Sonnet',
+    displayName: 'Catalog Model Alpha',
+    description: 'Alpha',
     modalities: ['text'],
     capabilities: {
       streaming: true,
@@ -53,18 +53,18 @@ describe('Infrastructure - InMemoryResolutionCache', () => {
   it('evicts least recently used items when capacity is reached', () => {
     const cache = new InMemoryResolutionCache(60, 2); // max 2 items
 
-    cache.set('key1', { ...sampleResult, canonicalModelId: 'm1' });
-    cache.set('key2', { ...sampleResult, canonicalModelId: 'm2' });
+    cache.set('key1', { ...sampleResult, canonicalModelId: 'oicunt.model.m1' });
+    cache.set('key2', { ...sampleResult, canonicalModelId: 'oicunt.model.m2' });
 
     // Access key1 so key2 becomes least recently used
     cache.get('key1');
 
     // Insert key3 -> should evict key2
-    cache.set('key3', { ...sampleResult, canonicalModelId: 'm3' });
+    cache.set('key3', { ...sampleResult, canonicalModelId: 'oicunt.model.m3' });
 
-    expect(cache.get('key1')?.canonicalModelId).toBe('m1');
+    expect(cache.get('key1')?.canonicalModelId).toBe('oicunt.model.m1');
     expect(cache.get('key2')).toBeNull();
-    expect(cache.get('key3')?.canonicalModelId).toBe('m3');
+    expect(cache.get('key3')?.canonicalModelId).toBe('oicunt.model.m3');
   });
 
   it('deletes and clears entries', () => {

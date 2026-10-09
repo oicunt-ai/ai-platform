@@ -16,7 +16,7 @@ describe('Domain - Validation & Cost Calculator', () => {
   };
 
   const validRequest: ValidatableInferenceRequest = {
-    canonicalModelId: 'claude-sonnet',
+    canonicalModelId: 'oicunt.model.catalog-alpha',
     messages: [{ role: 'user', content: 'Hello world' }],
     limits: validLimits,
     deadlineMs: Date.now() + 30_000,

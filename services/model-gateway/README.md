@@ -17,7 +17,7 @@ AI Orchestrator
               ↓
           Provider Adapter (Anti-Corruption Layer)
               ↓
-          Upstream Provider (Anthropic, Bedrock, OpenAI, Gemini)
+          Configured Upstream Provider
 ```
 
 The Model Gateway encapsulates:

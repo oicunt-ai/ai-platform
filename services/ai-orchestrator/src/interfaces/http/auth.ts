@@ -138,6 +138,24 @@ export function authenticateInternalRequest(
     };
   }
 
+  const expectedContext: Array<[string, unknown]> = [
+    ['x-tenant-id', result.claims.tenantId],
+    ['x-user-id', result.claims.userId],
+    ['x-request-id', result.claims.requestId],
+    ['x-correlation-id', result.claims.correlationId],
+  ];
+  for (const [headerName, claimValue] of expectedContext) {
+    const headerValue = req.headers[headerName];
+    if (claimValue !== headerValue) {
+      return {
+        authenticated: false,
+        statusCode: 403,
+        errorCode: 'FORBIDDEN',
+        message: `Signed request context does not match ${headerName}`,
+      };
+    }
+  }
+
   // 3. Prevent X-Service-Name header spoofing:
   // If caller supplied X-Service-Name header, it MUST match the authenticated token subject.
   const rawHeaderSvc = req.headers['x-service-name'];

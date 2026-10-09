@@ -22,7 +22,7 @@ Inference Service (Runtime Execution Layer)
   ↓ POST /internal/v1/models/dispatch (Service-to-Service Auth)
 Model Gateway (Data Plane & Provider Execution)
   ↓ Provider Adapter (Internal Anti-Corruption Layer)
-Upstream Providers (Anthropic / OpenAI / Google)
+Upstream Providers (upstream provider / OpenAI / Google)
 ```
 
 ### Architectural Boundary Matrix
@@ -38,7 +38,7 @@ Upstream Providers (Anthropic / OpenAI / Google)
 ## 2. Strict Architectural Invariants
 
 1. **Zero Provider SDKs & Credentials**:
-   The Inference Service contains zero third-party provider SDKs (`@anthropic-ai/sdk`, `openai`, `@google/genai`) and zero provider credentials. Model Gateway remains the sole provider execution boundary.
+   The Inference Service contains zero third-party provider SDKs (`a vendor SDK`, `openai`, `@google/genai`) and zero provider credentials. Model Gateway remains the sole provider execution boundary.
 2. **Provider Detail Containment**:
    Internal execution targets (`targetExecuted`) and provider names (`provider`) are completely excluded from `InferenceExecutionResponse` and `InferenceExecutionMetadata`. They are retained strictly in OpenTelemetry span attributes and internal debug logs.
 3. **Gateway Routing Isolation**:

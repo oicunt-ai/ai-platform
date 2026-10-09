@@ -47,6 +47,22 @@ export interface MemoryCallContext {
  * Outbound port for interacting with the Memory Service (Conversation Memory Store).
  */
 export interface MemoryPort {
+  createConversation?(
+    body: unknown,
+    context: MemoryCallContext,
+    signal?: AbortSignal | undefined,
+  ): Promise<unknown>;
+
+  listConversations?(
+    context: MemoryCallContext,
+    signal?: AbortSignal | undefined,
+  ): Promise<unknown>;
+
+  listMessages?(
+    conversationId: string,
+    context: MemoryCallContext,
+    signal?: AbortSignal | undefined,
+  ): Promise<unknown>;
   /**
    * Hydrates bounded conversation context history from the Memory Service.
    */

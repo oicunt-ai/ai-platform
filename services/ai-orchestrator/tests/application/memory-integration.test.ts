@@ -50,7 +50,7 @@ describe('Application - Memory Service Integration', () => {
 
       const result = await useCase.executeUnary(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           conversationId: 'conv_1',
           messages: [{ role: 'user', content: 'What models does it support?' }],
         },
@@ -75,7 +75,7 @@ describe('Application - Memory Service Integration', () => {
 
       await useCase.executeUnary(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           conversationId: 'conv_ident',
           messages: [{ role: 'user', content: 'How are you?' }],
         },
@@ -104,7 +104,7 @@ describe('Application - Memory Service Integration', () => {
       // Client sends full history plus Message 2
       await useCase.executeUnary(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           conversationId: 'conv_full_history',
           messages: [
             { role: 'user', content: 'Message 1' },
@@ -141,7 +141,7 @@ describe('Application - Memory Service Integration', () => {
       // Client passes the same current turn
       await useCase.executeUnary(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           conversationId: 'conv_already_saved',
           messages: [{ role: 'user', content: 'Current Question' }],
         },
@@ -168,7 +168,7 @@ describe('Application - Memory Service Integration', () => {
 
       const result = await useCase.executeUnary(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           conversationId: 'conv_unary',
           messages: [{ role: 'user', content: 'What is the speed of light?' }],
         },
@@ -219,7 +219,7 @@ describe('Application - Memory Service Integration', () => {
 
       const stream = useCase.executeStream(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           conversationId: 'conv_stream',
           messages: [{ role: 'user', content: 'Stream some text' }],
           stream: true,
@@ -267,7 +267,7 @@ describe('Application - Memory Service Integration', () => {
 
       const stream = useCase.executeStream(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           conversationId: 'conv_stream_chkpt_fail',
           messages: [{ role: 'user', content: 'Stream with checkpoint failure' }],
           stream: true,
@@ -309,7 +309,7 @@ describe('Application - Memory Service Integration', () => {
 
       const stream = useCase.executeStream(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           conversationId: 'conv_stream_cancelled_finish',
           messages: [{ role: 'user', content: 'Stream cancelled' }],
           stream: true,
@@ -331,7 +331,7 @@ describe('Application - Memory Service Integration', () => {
 
       const stream = useCase.executeStream(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           conversationId: 'conv_stream_no_reasoning',
           messages: [{ role: 'user', content: 'Stream without reasoning' }],
           stream: true,
@@ -367,7 +367,7 @@ describe('Application - Memory Service Integration', () => {
 
       const stream = useCase.executeStream(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           conversationId: 'conv_stream_abort',
           messages: [{ role: 'user', content: 'Will be cancelled' }],
           stream: true,
@@ -401,7 +401,7 @@ describe('Application - Memory Service Integration', () => {
 
       const stream = useCase.executeStream(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           conversationId: 'conv_stream_err',
           messages: [{ role: 'user', content: 'Error stream' }],
           stream: true,
@@ -424,7 +424,7 @@ describe('Application - Memory Service Integration', () => {
     it('executes purely statelessly when conversationId is absent in unary request', async () => {
       const result = await useCase.executeUnary(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           messages: [{ role: 'user', content: 'No conversation ID' }],
         },
         mockContext,
@@ -440,7 +440,7 @@ describe('Application - Memory Service Integration', () => {
     it('executes purely statelessly when conversationId is absent in streaming request', async () => {
       const stream = useCase.executeStream(
         {
-          model: 'claude-sonnet',
+          model: 'oicunt.model.catalog-alpha',
           messages: [{ role: 'user', content: 'No conversation ID stream' }],
           stream: true,
         },
@@ -468,7 +468,7 @@ describe('Application - Memory Service Integration', () => {
       await expect(
         useCase.executeUnary(
           {
-            model: 'claude-sonnet',
+            model: 'oicunt.model.catalog-alpha',
             conversationId: 'conv_deleted',
             messages: [{ role: 'user', content: 'Should fail' }],
           },
@@ -491,7 +491,7 @@ describe('Application - Memory Service Integration', () => {
       await expect(
         statelessUseCase.executeUnary(
           {
-            model: 'claude-sonnet',
+            model: 'oicunt.model.catalog-alpha',
             conversationId: 'conv_unconfigured',
             messages: [{ role: 'user', content: 'Should fail' }],
           },
@@ -516,7 +516,7 @@ describe('Application - Memory Service Integration', () => {
       await expect(
         useCase.executeUnary(
           {
-            model: 'claude-sonnet',
+            model: 'oicunt.model.catalog-alpha',
             conversationId: 'conv_write_fail',
             messages: [{ role: 'user', content: 'Fails on write' }],
           },

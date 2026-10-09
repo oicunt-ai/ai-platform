@@ -44,7 +44,7 @@ describe('HTTP Interfaces - Inference API', () => {
   });
 
   const validPayload = {
-    canonicalModelId: 'claude-sonnet',
+    canonicalModelId: 'oicunt.model.catalog-alpha',
     messages: [{ role: 'user', content: 'What is the speed of light?' }],
     limits: {
       contextWindowTokens: 200_000,
@@ -58,7 +58,7 @@ describe('HTTP Interfaces - Inference API', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${createTestToken()}`,
+        Authorization: `Bearer ${createInternalServiceToken({ serviceName: 'ai-orchestrator', audience: 'inference', secret: internalToken, correlationId: 'corr_api_test_01' })}`,
         'X-Service-Name': 'ai-orchestrator',
         'X-Correlation-Id': 'corr_api_test_01',
       },
@@ -71,7 +71,7 @@ describe('HTTP Interfaces - Inference API', () => {
 
     const body = (await res.json()) as InferenceExecutionResponse;
     expect(body.success).toBe(true);
-    expect(body.data.model).toBe('claude-sonnet');
+    expect(body.data.model).toBe('oicunt.model.catalog-alpha');
     expect(body.data.finishReason).toBe('stop');
     expect(body.meta.correlationId).toBe('corr_api_test_01');
   });

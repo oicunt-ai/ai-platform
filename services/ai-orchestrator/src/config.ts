@@ -15,6 +15,9 @@ export interface AiOrchestratorConfig {
   readonly inferenceBaseUrl: string;
   readonly memoryBaseUrl: string;
   readonly internalToken?: string | undefined;
+  readonly modelRegistryInternalToken?: string | undefined;
+  readonly inferenceInternalToken?: string | undefined;
+  readonly memoryInternalToken?: string | undefined;
   readonly defaultTimeoutMs: number;
   readonly maxTimeoutMs: number;
   readonly cacheTtlSeconds: number;
@@ -59,7 +62,7 @@ export function loadAiOrchestratorConfig(
           .filter(Boolean)
       : ['platform-api-gateway', 'api-gateway', 'billy-api', 'ai-platform-admin', 'agent-runner']);
 
-  return {
+  const config: AiOrchestratorConfig = {
     serviceName: overrides?.serviceName ?? 'ai-orchestrator',
     environment: env,
     port,
@@ -80,7 +83,28 @@ export function loadAiOrchestratorConfig(
       overrides?.inferenceBaseUrl ?? process.env['INFERENCE_BASE_URL'] ?? 'http://localhost:3004',
     memoryBaseUrl:
       overrides?.memoryBaseUrl ?? process.env['MEMORY_BASE_URL'] ?? 'http://localhost:3005',
-    internalToken: overrides?.internalToken ?? process.env['INTERNAL_SERVICE_TOKEN'],
+    internalToken:
+      overrides?.internalToken ??
+      process.env['AI_ORCHESTRATOR_INTERNAL_TOKEN'] ??
+      process.env['INTERNAL_SERVICE_TOKEN'],
+    modelRegistryInternalToken:
+      overrides?.modelRegistryInternalToken ??
+      process.env['MODEL_REGISTRY_INTERNAL_TOKEN'] ??
+      (env === 'production'
+        ? undefined
+        : (overrides?.internalToken ?? process.env['INTERNAL_SERVICE_TOKEN'])),
+    inferenceInternalToken:
+      overrides?.inferenceInternalToken ??
+      process.env['INFERENCE_INTERNAL_TOKEN'] ??
+      (env === 'production'
+        ? undefined
+        : (overrides?.internalToken ?? process.env['INTERNAL_SERVICE_TOKEN'])),
+    memoryInternalToken:
+      overrides?.memoryInternalToken ??
+      process.env['MEMORY_INTERNAL_TOKEN'] ??
+      (env === 'production'
+        ? undefined
+        : (overrides?.internalToken ?? process.env['INTERNAL_SERVICE_TOKEN'])),
     defaultTimeoutMs:
       overrides?.defaultTimeoutMs ??
       Number.parseInt(process.env['DEFAULT_TIMEOUT_MS'] ?? '120000', 10),
@@ -89,6 +113,22 @@ export function loadAiOrchestratorConfig(
     cacheTtlSeconds:
       overrides?.cacheTtlSeconds ?? Number.parseInt(process.env['CACHE_TTL_SECONDS'] ?? '45', 10),
     exposeReasoningDefault:
-      overrides?.exposeReasoningDefault ?? process.env['EXPOSE_REASONING_DEFAULT'] !== 'false',
+      overrides?.exposeReasoningDefault ?? process.env['EXPOSE_REASONING_DEFAULT'] === 'true',
   };
+  if (env === 'production') {
+    const missing = [
+      ['AI_ORCHESTRATOR_INTERNAL_TOKEN', config.internalToken],
+      ['MODEL_REGISTRY_INTERNAL_TOKEN', config.modelRegistryInternalToken],
+      ['INFERENCE_INTERNAL_TOKEN', config.inferenceInternalToken],
+      ['MEMORY_INTERNAL_TOKEN', config.memoryInternalToken],
+      ['MODEL_REGISTRY_BASE_URL', config.modelRegistryBaseUrl],
+      ['INFERENCE_BASE_URL', config.inferenceBaseUrl],
+      ['MEMORY_BASE_URL', config.memoryBaseUrl],
+    ].filter(([, value]) => !value || value.trim().length === 0 || value === 'in-memory');
+    if (missing.length > 0)
+      throw new Error(
+        `AI Orchestrator production configuration is incomplete: ${missing.map(([name]) => name).join(', ')}`,
+      );
+  }
+  return config;
 }

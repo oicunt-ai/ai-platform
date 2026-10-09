@@ -220,6 +220,10 @@ export class HttpInferenceClient implements InferencePort {
         audience: 'inference',
         secret: this.internalToken,
         expiresInSeconds: 300,
+        tenantId: request.tenantId,
+        userId: request.userId,
+        requestId: request.requestId,
+        correlationId: request.correlationId,
       });
       headers['Authorization'] = `Bearer ${token}`;
     }

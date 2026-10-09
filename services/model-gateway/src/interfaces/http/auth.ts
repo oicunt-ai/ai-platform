@@ -138,6 +138,22 @@ export function authenticateInternalRequest(
     };
   }
 
+  for (const [headerName, claim] of [
+    ['x-tenant-id', result.claims.tenantId],
+    ['x-user-id', result.claims.userId],
+    ['x-request-id', result.claims.requestId],
+    ['x-correlation-id', result.claims.correlationId],
+  ] as const) {
+    if (claim !== req.headers[headerName]) {
+      return {
+        authenticated: false,
+        statusCode: 403,
+        errorCode: 'FORBIDDEN_SERVICE_IDENTITY',
+        message: 'Signed request context mismatch',
+      };
+    }
+  }
+
   return {
     authenticated: true,
     serviceName: result.serviceName,

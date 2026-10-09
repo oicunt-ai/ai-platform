@@ -20,7 +20,7 @@ export interface OrchestratorToolDefinition {
  * Inbound chat execution payload received by the AI Orchestrator from product callers.
  */
 export interface OrchestratorChatRequest {
-  /** The user-selected canonical model identity (e.g. 'claude-sonnet', 'gpt-4o'). */
+  /** The user-selected OICUNT catalog model identity (e.g. 'oicunt.model.catalog-alpha'). */
   readonly model: CanonicalModelId;
 
   /** Multi-turn chat message history forming prompt context. Must contain at least one message. */

@@ -32,6 +32,34 @@ export class HttpModelRegistryClient implements ModelRegistryPort {
     this.timeoutMs = options.timeoutMs ?? 5000;
   }
 
+  public async getCatalog(
+    context: { readonly tenantId: string; readonly correlationId: string },
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    const headers: Record<string, string> = {
+      Accept: 'application/json',
+      'X-Service-Name': 'ai-orchestrator',
+      'X-Correlation-ID': context.correlationId,
+      'X-Tenant-ID': context.tenantId,
+    };
+    if (this.internalToken) {
+      headers['Authorization'] = `Bearer ${createInternalServiceToken({
+        issuer: 'ai-orchestrator',
+        audience: 'model-registry',
+        secret: this.internalToken,
+        tenantId: context.tenantId,
+        correlationId: context.correlationId,
+      })}`;
+    }
+    const response = await fetch(`${this.baseUrl}/internal/v1/catalog?selectableOnly=true`, {
+      headers,
+      ...(signal ? { signal } : {}),
+    });
+    if (!response.ok) throw new RegistryUnavailableError('Model catalog is unavailable');
+    const body = (await response.json()) as { data?: unknown };
+    return body.data ?? body;
+  }
+
   public async resolveModel(
     query: ModelResolutionQuery,
     signal?: AbortSignal,
@@ -62,6 +90,8 @@ export class HttpModelRegistryClient implements ModelRegistryPort {
         audience: 'model-registry',
         secret: this.internalToken,
         expiresInSeconds: 300,
+        tenantId: query.tenantId,
+        correlationId: query.correlationId,
       });
       headers['Authorization'] = `Bearer ${token}`;
     }

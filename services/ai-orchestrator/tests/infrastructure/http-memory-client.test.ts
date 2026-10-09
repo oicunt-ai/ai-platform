@@ -103,7 +103,7 @@ describe('Infrastructure - HttpMemoryClient', () => {
     expect(lastRequest?.headers['x-user-id']).toBe('user-123');
     expect(lastRequest?.headers['x-actor-id']).toBe('actor-456');
     expect(lastRequest?.headers['x-deadline-ms']).toBe('1700000000000');
-    expect(lastRequest?.headers['authorization']).toBe('Bearer test-token');
+    expect(lastRequest?.headers['authorization']).toMatch(/^Bearer [^.]+\.[^.]+\.[^.]+$/);
     expect(lastRequest?.body).toEqual({ maxTokens: 4000 });
   });
 

@@ -28,11 +28,15 @@ describe('HTTP Interfaces - Chat API', () => {
   let fakeInference: FakeInference;
   let baseUrl: string;
 
-  function createTestToken(serviceName = 'billy-api'): string {
+  function createTestToken(
+    serviceName = 'billy-api',
+    context: { correlationId?: string; userId?: string; tenantId?: string } = {},
+  ): string {
     return createInternalServiceToken({
       serviceName,
       audience: 'ai-orchestrator',
       secret: 'test-secret-token',
+      ...context,
     });
   }
 
@@ -69,13 +73,13 @@ describe('HTTP Interfaces - Chat API', () => {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        Authorization: `Bearer ${createTestToken()}`,
+        Authorization: `Bearer ${createTestToken('billy-api', { correlationId: 'corr-abc-123', userId: 'usr_999' })}`,
         'X-Service-Name': 'billy-api',
         'X-Correlation-ID': 'corr-abc-123',
         'X-User-ID': 'usr_999',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet',
+        model: 'oicunt.model.catalog-alpha',
         messages: [{ role: 'user', content: 'Hello!' }],
       }),
     });
@@ -83,7 +87,7 @@ describe('HTTP Interfaces - Chat API', () => {
     expect(response.status).toBe(200);
     const body = (await response.json()) as TestChatResponse;
     expect(body.success).toBe(true);
-    expect(body.data?.model).toBe('claude-sonnet');
+    expect(body.data?.model).toBe('oicunt.model.catalog-alpha');
     expect(body.data?.message.role).toBe('assistant');
     expect(body.meta?.correlationId).toBe('corr-abc-123');
   });
@@ -98,7 +102,7 @@ describe('HTTP Interfaces - Chat API', () => {
         'X-Service-Name': 'billy-api',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet',
+        model: 'oicunt.model.catalog-alpha',
         messages: [{ role: 'user', content: 'Turn 1' }],
       }),
     });
@@ -114,7 +118,7 @@ describe('HTTP Interfaces - Chat API', () => {
         'X-Service-Name': 'billy-api',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet',
+        model: 'oicunt.model.catalog-alpha',
         messages: [{ role: 'user', content: 'Turn 2' }],
       }),
     });
@@ -131,7 +135,7 @@ describe('HTTP Interfaces - Chat API', () => {
         'Cache-Control': 'no-cache',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet',
+        model: 'oicunt.model.catalog-alpha',
         messages: [{ role: 'user', content: 'Turn 3 with no-cache' }],
       }),
     });
@@ -145,12 +149,12 @@ describe('HTTP Interfaces - Chat API', () => {
       headers: {
         'Content-Type': 'application/json',
         Accept: 'text/event-stream',
-        Authorization: `Bearer ${createTestToken()}`,
+        Authorization: `Bearer ${createTestToken('billy-api', { correlationId: 'corr-stream-123' })}`,
         'X-Service-Name': 'billy-api',
         'X-Correlation-ID': 'corr-stream-123',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet',
+        model: 'oicunt.model.catalog-alpha',
         messages: [{ role: 'user', content: 'Stream this!' }],
         stream: true,
       }),
@@ -173,7 +177,7 @@ describe('HTTP Interfaces - Chat API', () => {
         'X-Service-Name': 'billy-api',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet',
+        model: 'oicunt.model.catalog-alpha',
         messages: [{ role: 'user', content: 'Hi' }],
       }),
     });
@@ -192,7 +196,7 @@ describe('HTTP Interfaces - Chat API', () => {
         'X-Service-Name': 'unauthorized-service',
       },
       body: JSON.stringify({
-        model: 'claude-sonnet',
+        model: 'oicunt.model.catalog-alpha',
         messages: [{ role: 'user', content: 'Hi' }],
       }),
     });

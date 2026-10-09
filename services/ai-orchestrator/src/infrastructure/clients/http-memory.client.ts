@@ -13,6 +13,7 @@ import {
   OrchestratorError,
   RequestCancelledError,
 } from '../../domain/errors.js';
+import { createInternalServiceToken } from '../security/internal-service-token.js';
 
 export interface HttpMemoryClientOptions {
   readonly baseUrl: string;
@@ -26,6 +27,35 @@ export class HttpMemoryClient implements MemoryPort {
   constructor(options: HttpMemoryClientOptions) {
     this.baseUrl = options.baseUrl.replace(/\/+$/, '');
     this.internalToken = options.internalToken;
+  }
+
+  public async createConversation(
+    body: unknown,
+    context: MemoryCallContext,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    return this.requestJson('/internal/v1/memory/conversations', 'POST', context, body, signal);
+  }
+
+  public async listConversations(
+    context: MemoryCallContext,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    return this.requestJson('/internal/v1/memory/conversations', 'GET', context, undefined, signal);
+  }
+
+  public async listMessages(
+    conversationId: string,
+    context: MemoryCallContext,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    return this.requestJson(
+      `/internal/v1/memory/conversations/${encodeURIComponent(conversationId)}/messages`,
+      'GET',
+      context,
+      undefined,
+      signal,
+    );
   }
 
   public async getContext(
@@ -152,10 +182,36 @@ export class HttpMemoryClient implements MemoryPort {
       headers['X-Deadline-Ms'] = String(context.deadlineMs);
     }
     if (this.internalToken) {
-      headers['Authorization'] = `Bearer ${this.internalToken}`;
+      headers['Authorization'] = `Bearer ${createInternalServiceToken({
+        issuer: 'ai-orchestrator',
+        audience: 'memory',
+        secret: this.internalToken,
+        tenantId: context.tenantId,
+        userId: context.userId,
+        requestId: context.requestId,
+        correlationId: context.correlationId,
+      })}`;
     }
 
     return headers;
+  }
+
+  private async requestJson(
+    path: string,
+    method: 'GET' | 'POST',
+    context: MemoryCallContext,
+    body?: unknown,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    const response = await fetch(`${this.baseUrl}${path}`, {
+      method,
+      headers: this.buildHeaders(context),
+      ...(body === undefined ? {} : { body: JSON.stringify(body) }),
+      ...(signal ? { signal } : {}),
+    });
+    if (!response.ok) await this.handleErrorResponse(response, context);
+    const payload = (await response.json()) as { data?: unknown };
+    return payload.data ?? payload;
   }
 
   private async handleErrorResponse(

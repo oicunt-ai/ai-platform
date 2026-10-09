@@ -13,6 +13,7 @@ export interface InferenceConfig {
   readonly maxBodySizeBytes: number;
   readonly modelGatewayBaseUrl: string;
   readonly internalToken?: string | undefined;
+  readonly modelGatewayInternalToken?: string | undefined;
   readonly defaultTimeoutMs: number;
   readonly maxTimeoutMs: number;
   readonly exposeReasoningDefault: boolean;
@@ -60,7 +61,7 @@ export function loadInferenceConfig(overrides?: Partial<InferenceConfig>): Infer
           'agent-runner',
         ]);
 
-  return {
+  const config: InferenceConfig = {
     serviceName: overrides?.serviceName ?? 'inference',
     environment: env,
     port,
@@ -77,13 +78,34 @@ export function loadInferenceConfig(overrides?: Partial<InferenceConfig>): Infer
       overrides?.modelGatewayBaseUrl ??
       process.env['MODEL_GATEWAY_BASE_URL'] ??
       'http://localhost:3002',
-    internalToken: overrides?.internalToken ?? process.env['INTERNAL_SERVICE_TOKEN'],
+    internalToken:
+      overrides?.internalToken ??
+      process.env['INFERENCE_INTERNAL_TOKEN'] ??
+      process.env['INTERNAL_SERVICE_TOKEN'],
+    modelGatewayInternalToken:
+      overrides?.modelGatewayInternalToken ??
+      process.env['MODEL_GATEWAY_INTERNAL_TOKEN'] ??
+      (env === 'production'
+        ? undefined
+        : (overrides?.internalToken ?? process.env['INTERNAL_SERVICE_TOKEN'])),
     defaultTimeoutMs:
       overrides?.defaultTimeoutMs ??
       Number.parseInt(process.env['DEFAULT_TIMEOUT_MS'] ?? '60000', 10),
     maxTimeoutMs:
       overrides?.maxTimeoutMs ?? Number.parseInt(process.env['MAX_TIMEOUT_MS'] ?? '300000', 10),
     exposeReasoningDefault:
-      overrides?.exposeReasoningDefault ?? process.env['EXPOSE_REASONING_DEFAULT'] !== 'false',
+      overrides?.exposeReasoningDefault ?? process.env['EXPOSE_REASONING_DEFAULT'] === 'true',
   };
+  if (env === 'production') {
+    const missing = [
+      ['INFERENCE_INTERNAL_TOKEN', config.internalToken],
+      ['MODEL_GATEWAY_INTERNAL_TOKEN', config.modelGatewayInternalToken],
+      ['MODEL_GATEWAY_BASE_URL', config.modelGatewayBaseUrl],
+    ].filter(([, value]) => !value || value.trim().length === 0);
+    if (missing.length > 0)
+      throw new Error(
+        `Inference production configuration is incomplete: ${missing.map(([name]) => name).join(', ')}`,
+      );
+  }
+  return config;
 }

@@ -58,11 +58,11 @@ export class FakeModelRegistry implements ModelRegistryPort {
 
   private seedDefaultModels(): void {
     this.registerModel({
-      canonicalModelId: 'claude-sonnet',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       version: 'v1.0.0',
-      displayName: 'Claude Sonnet',
-      description: 'Claude 3.5 Sonnet flagship reasoning model',
-      family: 'claude',
+      displayName: 'Catalog Model Alpha',
+      description: 'Catalog Model Alpha flagship reasoning model',
+      family: 'catalog-alpha',
       modalities: ['text', 'image'],
       capabilities: {
         streaming: true,
@@ -88,9 +88,9 @@ export class FakeModelRegistry implements ModelRegistryPort {
       status: 'available',
       eligibleTargets: [
         {
-          targetId: 'anthropic-sonnet-primary',
-          provider: 'anthropic',
-          upstreamModelId: 'claude-3-5-sonnet-20241022',
+          targetId: 'provider-a-primary',
+          provider: 'test-provider',
+          upstreamModelId: 'provider-model-alpha-v1',
           priority: 1,
           weight: 100,
           supportsStreaming: true,
@@ -106,10 +106,10 @@ export class FakeModelRegistry implements ModelRegistryPort {
     });
 
     this.registerModel({
-      canonicalModelId: 'gpt-4o',
+      canonicalModelId: 'oicunt.model.catalog-beta',
       version: 'v1.0.0',
-      displayName: 'GPT-4o',
-      description: 'OpenAI GPT-4o multimodal model',
+      displayName: 'Catalog Model Beta',
+      description: 'OpenAI Catalog Model Beta multimodal model',
       family: 'gpt',
       modalities: ['text', 'image'],
       capabilities: {
@@ -135,7 +135,7 @@ export class FakeModelRegistry implements ModelRegistryPort {
         {
           targetId: 'openai-gpt4o-primary',
           provider: 'openai',
-          upstreamModelId: 'gpt-4o',
+          upstreamModelId: 'provider-model-beta',
           priority: 1,
           weight: 100,
           supportsStreaming: true,
@@ -151,7 +151,7 @@ export class FakeModelRegistry implements ModelRegistryPort {
     });
 
     this.registerModel({
-      canonicalModelId: 'model-maintenance',
+      canonicalModelId: 'oicunt.model.maintenance',
       version: 'v1.0.0',
       displayName: 'Maintenance Model',
       description: 'Model under maintenance',
@@ -178,7 +178,7 @@ export class FakeModelRegistry implements ModelRegistryPort {
       eligibleTargets: [
         {
           targetId: 'target-maintenance',
-          provider: 'anthropic',
+          provider: 'test-provider',
           upstreamModelId: 'maintenance',
           priority: 1,
           weight: 100,
@@ -195,7 +195,7 @@ export class FakeModelRegistry implements ModelRegistryPort {
     });
 
     this.registerModel({
-      canonicalModelId: 'model-deprecated',
+      canonicalModelId: 'oicunt.model.deprecated',
       version: 'v1.0.0',
       displayName: 'Deprecated Model',
       description: 'Retired model',
@@ -230,7 +230,7 @@ export class FakeModelRegistry implements ModelRegistryPort {
     });
 
     this.registerModel({
-      canonicalModelId: 'model-no-targets',
+      canonicalModelId: 'oicunt.model.no-targets',
       version: 'v1.0.0',
       displayName: 'No Targets Model',
       description: 'Model with zero targets',

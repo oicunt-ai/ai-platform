@@ -74,8 +74,8 @@ export class FakeInference implements InferencePort {
       metadata: {
         requestId: request.requestId,
         correlationId: request.correlationId,
-        provider: 'anthropic',
-        targetExecuted: 'anthropic:us-east-1:prod',
+        provider: 'test-provider',
+        targetExecuted: 'test-provider:region-a:prod',
         latencyMs: 120,
       },
     };
