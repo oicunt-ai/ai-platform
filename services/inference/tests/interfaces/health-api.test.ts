@@ -38,8 +38,24 @@ describe('HTTP Interfaces - Health API', () => {
     expect(body.service).toBe('inference');
   });
 
+  it('aliases /health/liveness to /healthz', async () => {
+    const res = await fetch(`${baseUrl}/health/liveness`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string; service: string };
+    expect(body.status).toBe('ok');
+    expect(body.service).toBe('inference');
+  });
+
   it('returns 200 OK for /readyz when service and dependencies are healthy', async () => {
     const res = await fetch(`${baseUrl}/readyz`);
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { status: string; service: string };
+    expect(body.status).toBe('ready');
+    expect(body.service).toBe('inference');
+  });
+
+  it('aliases /health/readiness to /readyz', async () => {
+    const res = await fetch(`${baseUrl}/health/readiness`);
     expect(res.status).toBe(200);
     const body = (await res.json()) as { status: string; service: string };
     expect(body.status).toBe('ready');

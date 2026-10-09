@@ -21,12 +21,12 @@ export function createHttpRouter(deps: HttpRouterDependencies) {
     const method = (req.method ?? 'GET').toUpperCase();
 
     // 1. Health Probes
-    if (path === '/healthz' && method === 'GET') {
+    if ((path === '/healthz' || path === '/health/liveness') && method === 'GET') {
       handleLiveness(req, res);
       return;
     }
 
-    if (path === '/readyz' && method === 'GET') {
+    if ((path === '/readyz' || path === '/health/readiness') && method === 'GET') {
       await handleReadiness(req, res, deps.healthOptions);
       return;
     }
