@@ -71,10 +71,10 @@ describe('Real PostgreSQL Integration Test Suite', () => {
     if (!instance) return;
 
     const model = new CanonicalModel({
-      id: 'oicunt.model.general',
+      id: 'oicunt.model.catalog-alpha',
       displayName: 'General Intelligence',
       description: 'Conversational frontier model',
-      family: 'anthropic',
+      family: 'test-provider',
       activeVersion: 'v1.0.0',
     });
 
@@ -101,10 +101,10 @@ describe('Real PostgreSQL Integration Test Suite', () => {
     });
 
     const target1 = new ModelTarget({
-      id: 'target-anthropic-us',
+      id: 'target-provider-a-us',
       modelVersionId: v1.id,
-      provider: 'anthropic',
-      upstreamModelId: 'claude-3-5-sonnet',
+      provider: 'test-provider',
+      upstreamModelId: 'provider-model-alpha',
       priority: 1,
       weight: 100,
       region: 'us-east-1',
@@ -133,11 +133,11 @@ describe('Real PostgreSQL Integration Test Suite', () => {
     await modelRepo.save(model);
 
     // Retrieve and verify
-    const retrieved = await modelRepo.findById('oicunt.model.general');
+    const retrieved = await modelRepo.findById('oicunt.model.catalog-alpha');
     expect(retrieved).not.toBeNull();
-    expect(retrieved?.id).toBe('oicunt.model.general');
+    expect(retrieved?.id).toBe('oicunt.model.catalog-alpha');
     expect(retrieved?.displayName).toBe('General Intelligence');
-    expect(retrieved?.family).toBe('anthropic');
+    expect(retrieved?.family).toBe('test-provider');
     expect(retrieved?.getVersions()).toHaveLength(1);
     expect(retrieved?.getVersions()[0]?.capabilities.reasoning).toBe(true);
     expect(retrieved?.getVersions()[0]?.capabilities.supportedEffortLevels).toEqual([
@@ -147,7 +147,7 @@ describe('Real PostgreSQL Integration Test Suite', () => {
     ]);
     expect(retrieved?.getVersions()[0]?.capabilities.defaultEffortLevel).toBe('medium');
     expect(retrieved?.getTargets()).toHaveLength(1);
-    expect(retrieved?.getTarget('target-anthropic-us')?.provider).toBe('anthropic');
+    expect(retrieved?.getTarget('target-provider-a-us')?.provider).toBe('test-provider');
     expect(retrieved?.routingPolicy.strategy).toBe('priority-fallback');
     expect(retrieved?.getAliases()).toHaveLength(2);
     expect(retrieved?.getAlias('latest')).toBeDefined();
@@ -157,7 +157,7 @@ describe('Real PostgreSQL Integration Test Suite', () => {
   it('handles global and tenant-specific alias upserts without constraint collision', async () => {
     if (!instance) return;
 
-    const model = (await modelRepo.findById('oicunt.model.general'))!;
+    const model = (await modelRepo.findById('oicunt.model.catalog-alpha'))!;
 
     // Add a new version v2.0.0
     const v2 = new ModelVersion({
@@ -204,7 +204,7 @@ describe('Real PostgreSQL Integration Test Suite', () => {
     // Save should execute both global and tenant UPSERTs cleanly
     await expect(modelRepo.save(model)).resolves.not.toThrow();
 
-    const retrieved = (await modelRepo.findById('oicunt.model.general'))!;
+    const retrieved = (await modelRepo.findById('oicunt.model.catalog-alpha'))!;
     expect(retrieved.getAlias('latest')?.targetVersion).toBe('v2.0.0');
     expect(retrieved.getAlias('preview', 'tenant-enterprise-99')?.targetVersion).toBe('v2.0.0');
   });
@@ -212,8 +212,8 @@ describe('Real PostgreSQL Integration Test Suite', () => {
   it('enforces optimistic concurrency locking on concurrent saves', async () => {
     if (!instance) return;
 
-    const processA = (await modelRepo.findById('oicunt.model.general'))!;
-    const processB = (await modelRepo.findById('oicunt.model.general'))!;
+    const processA = (await modelRepo.findById('oicunt.model.catalog-alpha'))!;
+    const processB = (await modelRepo.findById('oicunt.model.catalog-alpha'))!;
     const currentLock = processA.versionLock;
 
     // Process A updates and saves with lock check
@@ -228,7 +228,7 @@ describe('Real PostgreSQL Integration Test Suite', () => {
   it('prunes orphaned child rows when entities are removed from aggregate', async () => {
     if (!instance) return;
 
-    const model = (await modelRepo.findById('oicunt.model.general'))!;
+    const model = (await modelRepo.findById('oicunt.model.catalog-alpha'))!;
 
     // Initially has 2 versions, 1 target, 2 aliases
     expect(model.getTargets()).toHaveLength(1);
@@ -251,7 +251,7 @@ describe('Real PostgreSQL Integration Test Suite', () => {
 
     // Direct SQL check to verify child rows were deleted from PostgreSQL
     const targetsRes = await instance.pool.query<{ count: number }>(
-      `SELECT COUNT(*)::int as count FROM model_registry.model_targets WHERE id = 'target-anthropic-us'`,
+      `SELECT COUNT(*)::int as count FROM model_registry.model_targets WHERE id = 'target-provider-a-us'`,
     );
     expect(targetsRes.rows[0]?.count).toBe(0);
 
@@ -267,7 +267,7 @@ describe('Real PostgreSQL Integration Test Suite', () => {
 
     // Add a second model
     const codingModel = new CanonicalModel({
-      id: 'oicunt.model.coding',
+      id: 'oicunt.model.catalog-delta',
       displayName: 'Code Specialist',
       description: 'Optimized for reasoning and syntax generation',
       activeVersion: 'v1.0.0',
@@ -298,8 +298,8 @@ describe('Real PostgreSQL Integration Test Suite', () => {
     const allModels = await modelRepo.listAll();
     expect(allModels.length).toBeGreaterThanOrEqual(2);
     const modelIds = allModels.map((m) => m.id);
-    expect(modelIds).toContain('oicunt.model.general');
-    expect(modelIds).toContain('oicunt.model.coding');
+    expect(modelIds).toContain('oicunt.model.catalog-alpha');
+    expect(modelIds).toContain('oicunt.model.catalog-delta');
   });
 
   it('persists and queries audit events in PostgreSQL', async () => {
@@ -307,29 +307,29 @@ describe('Real PostgreSQL Integration Test Suite', () => {
 
     const event1 = new AuditEvent({
       entityType: 'canonical_model',
-      entityId: 'oicunt.model.general',
+      entityId: 'oicunt.model.catalog-alpha',
       action: 'CREATE',
       actorId: 'admin-pg-1',
       correlationId: 'trace-pg-1',
       timestamp: new Date(Date.now() - 5000).toISOString(),
-      afterState: { id: 'oicunt.model.general' },
+      afterState: { id: 'oicunt.model.catalog-alpha' },
     });
 
     const event2 = new AuditEvent({
       entityType: 'canonical_model',
-      entityId: 'oicunt.model.general',
+      entityId: 'oicunt.model.catalog-alpha',
       action: 'UPDATE',
       actorId: 'admin-pg-2',
       correlationId: 'trace-pg-2',
       reason: 'Upgraded version to v2.0.0',
       timestamp: new Date().toISOString(),
-      afterState: { id: 'oicunt.model.general', activeVersion: 'v2.0.0' },
+      afterState: { id: 'oicunt.model.catalog-alpha', activeVersion: 'v2.0.0' },
     });
 
     await auditRepo.append(event1);
     await auditRepo.append(event2);
 
-    const events = await auditRepo.listByEntity('canonical_model', 'oicunt.model.general');
+    const events = await auditRepo.listByEntity('canonical_model', 'oicunt.model.catalog-alpha');
     expect(events.length).toBeGreaterThanOrEqual(2);
     expect(events[0]?.action).toBe('UPDATE'); // ordered by created_at DESC
     expect(events[0]?.reason).toBe('Upgraded version to v2.0.0');

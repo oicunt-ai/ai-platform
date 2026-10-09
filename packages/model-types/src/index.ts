@@ -1,31 +1,14 @@
 /**
- * Canonical OICUNT AI Platform model identifiers.
- * Represents stable, OICUNT-owned model identities surfaced to users in BILLY
- * and consuming services (e.g. 'claude-sonnet', 'claude-opus', 'gpt-4o', 'gemini-pro').
- * Public and internal service-to-service requests must use canonical identifiers,
- * never raw upstream vendor model names.
+ * Stable OICUNT-owned model identifiers exposed by the Model Registry catalog.
+ * IDs use the `oicunt.model.<catalog-slug>` namespace. They identify individual
+ * selectable catalog entries and never expose an upstream provider model ID.
  */
-export type CanonicalModelId =
-  | 'claude-sonnet'
-  | 'claude-opus'
-  | 'claude-haiku'
-  | 'gpt-4o'
-  | 'gpt-4o-mini'
-  | 'gemini-pro'
-  | 'gemini-flash'
-  | 'oicunt.model.general'
-  | 'oicunt.model.general.fast'
-  | 'oicunt.model.reasoning'
-  | 'oicunt.model.coding'
-  | 'oicunt.model.embedding'
-  | 'oicunt.model.vision'
-  | (string & {});
+export type CanonicalModelId = `oicunt.model.${string}`;
 
 /**
  * Upstream model provider categories.
  */
-export type ModelProviderType =
-  'anthropic' | 'openai' | 'google' | 'bedrock' | 'azure-openai' | 'local' | 'custom';
+export type ModelProviderType = string & {};
 
 /**
  * Supported model modalities.

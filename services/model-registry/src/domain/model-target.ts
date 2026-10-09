@@ -18,15 +18,24 @@ export interface CreateModelTargetParams {
   readonly updatedAt?: string | undefined;
 }
 
-const VALID_PROVIDERS: readonly ModelProviderType[] = [
-  'anthropic',
-  'openai',
-  'google',
-  'bedrock',
-  'azure-openai',
-  'local',
-  'custom',
-];
+const PROVIDER_ID_REGEX = /^[a-z0-9][a-z0-9._-]{0,63}$/;
+
+const SECRET_KEY_PATTERN =
+  /(^|[_-])(api[-_]?key|token|secret|password|authorization|credential)s?($|[_-])/i;
+
+function assertNoSecrets(value: unknown, path = 'adapterOptions'): void {
+  if (!value || typeof value !== 'object') return;
+  for (const [key, child] of Object.entries(value as Record<string, unknown>)) {
+    const childPath = `${path}.${key}`;
+    if (SECRET_KEY_PATTERN.test(key)) {
+      throw new ModelValidationError(
+        `Provider credentials are not permitted in model registry metadata (${childPath})`,
+        childPath,
+      );
+    }
+    assertNoSecrets(child, childPath);
+  }
+}
 
 export class ModelTarget {
   public readonly id: string;
@@ -53,6 +62,7 @@ export class ModelTarget {
 
     this.validatePriority(priority);
     this.validateWeight(weight);
+    assertNoSecrets(params.adapterOptions);
 
     this.id = params.id;
     this.modelVersionId = params.modelVersionId;
@@ -127,9 +137,9 @@ export class ModelTarget {
   }
 
   private validateProvider(provider: ModelProviderType): void {
-    if (!VALID_PROVIDERS.includes(provider)) {
+    if (!provider || typeof provider !== 'string' || !PROVIDER_ID_REGEX.test(provider)) {
       throw new ModelValidationError(
-        `Invalid model provider '${provider}'. Supported: ${VALID_PROVIDERS.join(', ')}`,
+        `Invalid model provider '${provider}'. Provider IDs must use lowercase letters, numbers, dots, underscores, or hyphens`,
         'provider',
       );
     }

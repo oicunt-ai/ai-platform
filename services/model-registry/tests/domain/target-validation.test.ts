@@ -3,13 +3,24 @@ import type { ModelProviderType } from '@oicunt-ai/model-types';
 import { ModelTarget, ModelValidationError } from '../../src/domain/index.js';
 
 describe('ModelTarget Domain Entity Validation', () => {
-  it('validates provider category against approved providers', () => {
+  it('accepts new provider IDs without an application-level allowlist', () => {
+    expect(
+      new ModelTarget({
+        id: 'target-1',
+        modelVersionId: 'ver-1',
+        provider: 'new-provider' as ModelProviderType,
+        upstreamModelId: 'custom-model',
+      }).provider,
+    ).toBe('new-provider');
+  });
+
+  it('rejects malformed provider IDs', () => {
     expect(
       () =>
         new ModelTarget({
           id: 'target-1',
           modelVersionId: 'ver-1',
-          provider: 'unsupported-provider' as unknown as ModelProviderType,
+          provider: 'Invalid Provider' as unknown as ModelProviderType,
           upstreamModelId: 'custom-model',
         }),
     ).toThrowError(ModelValidationError);
@@ -21,8 +32,8 @@ describe('ModelTarget Domain Entity Validation', () => {
         new ModelTarget({
           id: 'target-1',
           modelVersionId: 'ver-1',
-          provider: 'anthropic',
-          upstreamModelId: 'claude 3.5 sonnet',
+          provider: 'test-provider',
+          upstreamModelId: 'provider model with spaces',
         }),
     ).toThrowError(ModelValidationError);
   });
@@ -33,8 +44,8 @@ describe('ModelTarget Domain Entity Validation', () => {
         new ModelTarget({
           id: 'target-1',
           modelVersionId: 'ver-1',
-          provider: 'anthropic',
-          upstreamModelId: 'claude-3-5-sonnet',
+          provider: 'test-provider',
+          upstreamModelId: 'provider-model-alpha',
           priority: 0,
         }),
     ).toThrowError(ModelValidationError);
@@ -44,8 +55,8 @@ describe('ModelTarget Domain Entity Validation', () => {
         new ModelTarget({
           id: 'target-1',
           modelVersionId: 'ver-1',
-          provider: 'anthropic',
-          upstreamModelId: 'claude-3-5-sonnet',
+          provider: 'test-provider',
+          upstreamModelId: 'provider-model-alpha',
           priority: 1,
           weight: 150,
         }),
@@ -56,8 +67,8 @@ describe('ModelTarget Domain Entity Validation', () => {
     const target = new ModelTarget({
       id: 'target-1',
       modelVersionId: 'ver-1',
-      provider: 'anthropic',
-      upstreamModelId: 'claude-3-5-sonnet',
+      provider: 'test-provider',
+      upstreamModelId: 'provider-model-alpha',
       status: 'available',
     });
 
@@ -75,5 +86,18 @@ describe('ModelTarget Domain Entity Validation', () => {
     target.updateStatus('deprecated');
     expect(target.isEligible(true)).toBe(false);
     expect(target.isEligible(false)).toBe(false);
+  });
+
+  it('rejects provider credentials anywhere in adapter metadata', () => {
+    expect(
+      () =>
+        new ModelTarget({
+          id: 'target-secret',
+          modelVersionId: 'ver-1',
+          provider: 'test-provider',
+          upstreamModelId: 'provider-model-alpha',
+          adapterOptions: { transport: { apiKey: 'must-not-be-stored' } },
+        }),
+    ).toThrowError(ModelValidationError);
   });
 });

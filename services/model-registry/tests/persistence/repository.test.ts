@@ -12,7 +12,7 @@ describe('Model Repository Specification & Optimistic Concurrency', () => {
     const repo = new InMemoryModelRepository();
 
     const model = new CanonicalModel({
-      id: 'oicunt.model.vision',
+      id: 'oicunt.model.catalog-vision',
       displayName: 'Vision Model',
       description: 'Multimodal vision specialist',
       activeVersion: 'v1.0.0',
@@ -51,9 +51,9 @@ describe('Model Repository Specification & Optimistic Concurrency', () => {
 
     await repo.save(model);
 
-    const retrieved = await repo.findById('oicunt.model.vision');
+    const retrieved = await repo.findById('oicunt.model.catalog-vision');
     expect(retrieved).not.toBeNull();
-    expect(retrieved?.id).toBe('oicunt.model.vision');
+    expect(retrieved?.id).toBe('oicunt.model.catalog-vision');
     expect(retrieved?.getVersions()).toHaveLength(1);
     expect(retrieved?.getTargets()).toHaveLength(1);
     expect(retrieved?.getTarget('target-google-vision-us')?.provider).toBe('google');
@@ -63,7 +63,7 @@ describe('Model Repository Specification & Optimistic Concurrency', () => {
     const repo = new InMemoryModelRepository();
 
     const model = new CanonicalModel({
-      id: 'oicunt.model.coding',
+      id: 'oicunt.model.catalog-delta',
       displayName: 'Coding',
       description: 'Code model',
       activeVersion: 'v1.0.0',
@@ -72,11 +72,11 @@ describe('Model Repository Specification & Optimistic Concurrency', () => {
     await repo.save(model); // initial version_lock = 1
 
     // Process A loads model at lock = 1
-    const processA = (await repo.findById('oicunt.model.coding'))!;
+    const processA = (await repo.findById('oicunt.model.catalog-delta'))!;
     expect(processA.versionLock).toBe(1);
 
     // Process B loads model at lock = 1
-    const processB = (await repo.findById('oicunt.model.coding'))!;
+    const processB = (await repo.findById('oicunt.model.catalog-delta'))!;
     expect(processB.versionLock).toBe(1);
 
     // Process A updates and saves with expected lock = 1

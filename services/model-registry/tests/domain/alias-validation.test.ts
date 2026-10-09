@@ -11,7 +11,7 @@ import {
 describe('ModelAlias Domain Validation and Cycle Detection', () => {
   const setupModel = () => {
     const model = new CanonicalModel({
-      id: 'oicunt.model.general',
+      id: 'oicunt.model.catalog-alpha',
       displayName: 'General Intelligence',
       description: 'Desc',
       activeVersion: 'v1.0.0',
@@ -98,7 +98,7 @@ describe('ModelAlias Domain Validation and Cycle Detection', () => {
     expect(
       () =>
         new ModelAlias({
-          canonicalModelId: 'oicunt.model.general',
+          canonicalModelId: 'oicunt.model.catalog-alpha',
           aliasName: 'latest',
           targetVersion: 'latest',
         }),

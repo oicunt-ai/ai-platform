@@ -23,18 +23,18 @@ describe('Model Selection, Catalog & Effort Capabilities Specification', () => {
     catalogUseCase = new GetModelCatalogUseCase(repository);
     resolveUseCase = new ResolveModelUseCase(repository, cache);
 
-    // 1. Claude Sonnet (Reasoning model supporting low, medium, high effort)
-    const claudeSonnet = new CanonicalModel({
-      id: 'claude-sonnet',
-      displayName: 'Claude Sonnet',
+    // 1. Catalog Model Alpha (Reasoning model supporting low, medium, high effort)
+    const catalogAlpha = new CanonicalModel({
+      id: 'oicunt.model.catalog-alpha',
+      displayName: 'Catalog Model Alpha',
       description: 'High-intelligence frontier reasoning model',
-      family: 'anthropic',
+      family: 'test-provider',
       activeVersion: 'v1.0.0',
     });
 
-    const sonnetV1 = new ModelVersion({
-      id: 'sonnet-v1-uuid',
-      canonicalModelId: claudeSonnet.id,
+    const alphaV1 = new ModelVersion({
+      id: 'alpha-v1-uuid',
+      canonicalModelId: catalogAlpha.id,
       version: 'v1.0.0',
       modalities: ['text', 'image'],
       capabilities: {
@@ -54,37 +54,37 @@ describe('Model Selection, Catalog & Effort Capabilities Specification', () => {
       status: 'available',
     });
 
-    // Target 1: Primary Anthropic direct API
-    const sonnetTarget1 = new ModelTarget({
-      id: 'target-anthropic-direct',
-      modelVersionId: sonnetV1.id,
-      provider: 'anthropic',
-      upstreamModelId: 'claude-3-5-sonnet-20241022',
+    // Target 1: primary provider route
+    const alphaTarget1 = new ModelTarget({
+      id: 'target-provider-a-direct',
+      modelVersionId: alphaV1.id,
+      provider: 'test-provider',
+      upstreamModelId: 'provider-model-alpha-v1',
       priority: 1,
       weight: 100,
       region: 'us-east-1',
     });
 
     // Target 2: Fallback via AWS Bedrock (provider replacement / resilience)
-    const sonnetTarget2 = new ModelTarget({
+    const alphaTarget2 = new ModelTarget({
       id: 'target-bedrock-fallback',
-      modelVersionId: sonnetV1.id,
+      modelVersionId: alphaV1.id,
       provider: 'bedrock',
-      upstreamModelId: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+      upstreamModelId: 'provider-b.model-alpha-v1',
       priority: 2,
       weight: 100,
       region: 'us-east-1',
     });
 
-    claudeSonnet.addVersion(sonnetV1);
-    claudeSonnet.addTarget(sonnetTarget1);
-    claudeSonnet.addTarget(sonnetTarget2);
-    await repository.save(claudeSonnet);
+    catalogAlpha.addVersion(alphaV1);
+    catalogAlpha.addTarget(alphaTarget1);
+    catalogAlpha.addTarget(alphaTarget2);
+    await repository.save(catalogAlpha);
 
-    // 2. GPT-4o (General model, reasoning=false, no effort levels)
+    // 2. Catalog Model Beta (General model, reasoning=false, no effort levels)
     const gpt4o = new CanonicalModel({
-      id: 'gpt-4o',
-      displayName: 'GPT-4o',
+      id: 'oicunt.model.catalog-beta',
+      displayName: 'Catalog Model Beta',
       description: 'Versatile multimodal flagship model',
       family: 'openai',
       activeVersion: 'v1.0.0',
@@ -114,7 +114,7 @@ describe('Model Selection, Catalog & Effort Capabilities Specification', () => {
       id: 'target-openai-direct',
       modelVersionId: gpt4oV1.id,
       provider: 'openai',
-      upstreamModelId: 'gpt-4o-2024-08-06',
+      upstreamModelId: 'provider-model-beta-2024-08-06',
       priority: 1,
       weight: 100,
     });
@@ -123,10 +123,10 @@ describe('Model Selection, Catalog & Effort Capabilities Specification', () => {
     gpt4o.addTarget(gptTarget);
     await repository.save(gpt4o);
 
-    // 3. Gemini Flash (Fast model in maintenance)
+    // 3. Catalog Model Gamma (Fast model in maintenance)
     const geminiFlash = new CanonicalModel({
-      id: 'gemini-flash',
-      displayName: 'Gemini Flash',
+      id: 'oicunt.model.catalog-gamma',
+      displayName: 'Catalog Model Gamma',
       description: 'Ultra fast and lightweight model',
       family: 'google',
       activeVersion: 'v1.0.0',
@@ -171,54 +171,58 @@ describe('Model Selection, Catalog & Effort Capabilities Specification', () => {
       // Default execution without options must apply selectableOnly=true (only available/degraded models)
       const defaultCatalog = await catalogUseCase.execute();
       expect(defaultCatalog).toHaveLength(2);
-      expect(defaultCatalog.map((m) => m.id)).toEqual(['claude-sonnet', 'gpt-4o']);
+      expect(defaultCatalog.map((m) => m.id)).toEqual([
+        'oicunt.model.catalog-beta',
+        'oicunt.model.catalog-alpha',
+      ]);
 
       // With selectableOnly=false, all models including maintenance models are returned
       const allCatalog = await catalogUseCase.execute({ selectableOnly: false });
       expect(allCatalog).toHaveLength(3);
 
-      const sonnetEntry = allCatalog.find((m) => m.id === 'claude-sonnet')!;
-      expect(sonnetEntry).toBeDefined();
-      expect(sonnetEntry.displayName).toBe('Claude Sonnet');
-      expect(sonnetEntry.family).toBe('anthropic');
-      expect(sonnetEntry.activeVersion).toBe('v1.0.0');
-      expect(sonnetEntry.isSelectable).toBe(true);
-      expect(sonnetEntry.capabilities.reasoning).toBe(true);
-      expect(sonnetEntry.capabilities.supportedEffortLevels).toEqual(['low', 'medium', 'high']);
-      expect(sonnetEntry.capabilities.defaultEffortLevel).toBe('medium');
+      const alphaEntry = allCatalog.find((m) => m.id === 'oicunt.model.catalog-alpha')!;
+      expect(alphaEntry).toBeDefined();
+      expect(alphaEntry.displayName).toBe('Catalog Model Alpha');
+      expect(alphaEntry.family).toBe('test-provider');
+      expect(alphaEntry.activeVersion).toBe('v1.0.0');
+      expect(alphaEntry.isSelectable).toBe(true);
+      expect(alphaEntry.capabilities.reasoning).toBe(true);
+      expect(alphaEntry.capabilities.supportedEffortLevels).toEqual(['low', 'medium', 'high']);
+      expect(alphaEntry.capabilities.defaultEffortLevel).toBe('medium');
 
       // Crucial: Provider targets and upstream IDs are strictly omitted from the catalog
-      expect(
-        (sonnetEntry as unknown as Record<string, unknown>)['eligibleTargets'],
-      ).toBeUndefined();
-      expect(
-        (sonnetEntry as unknown as Record<string, unknown>)['upstreamModelId'],
-      ).toBeUndefined();
+      expect((alphaEntry as unknown as Record<string, unknown>)['eligibleTargets']).toBeUndefined();
+      expect((alphaEntry as unknown as Record<string, unknown>)['upstreamModelId']).toBeUndefined();
     });
 
     it('filters catalog by selectableOnly to omit models in maintenance/deprecated state', async () => {
       const allEntries = await catalogUseCase.execute({ selectableOnly: false });
       expect(allEntries).toHaveLength(3);
-      expect(allEntries.find((m) => m.id === 'gemini-flash')?.isSelectable).toBe(false);
+      expect(allEntries.find((m) => m.id === 'oicunt.model.catalog-gamma')?.isSelectable).toBe(
+        false,
+      );
 
       const selectableEntries = await catalogUseCase.execute({ selectableOnly: true });
       expect(selectableEntries).toHaveLength(2);
-      expect(selectableEntries.map((m) => m.id)).toEqual(['claude-sonnet', 'gpt-4o']);
+      expect(selectableEntries.map((m) => m.id)).toEqual([
+        'oicunt.model.catalog-beta',
+        'oicunt.model.catalog-alpha',
+      ]);
     });
 
     it('filters catalog by family category', async () => {
-      const anthropicModels = await catalogUseCase.execute({ family: 'anthropic' });
-      expect(anthropicModels).toHaveLength(1);
-      expect(anthropicModels[0]?.id).toBe('claude-sonnet');
+      const providerModels = await catalogUseCase.execute({ family: 'test-provider' });
+      expect(providerModels).toHaveLength(1);
+      expect(providerModels[0]?.id).toBe('oicunt.model.catalog-alpha');
 
       const openaiModels = await catalogUseCase.execute({ family: 'openai' });
       expect(openaiModels).toHaveLength(1);
-      expect(openaiModels[0]?.id).toBe('gpt-4o');
+      expect(openaiModels[0]?.id).toBe('oicunt.model.catalog-beta');
     });
 
     it('throws VersionNotFoundError when model activeVersion cannot be found (removes silent fallback)', async () => {
       const corruptedModel = new CanonicalModel({
-        id: 'corrupted-model',
+        id: 'oicunt.model.corrupted',
         displayName: 'Corrupted Model',
         description: 'Model with missing active version in versions list',
         family: 'test',
@@ -253,12 +257,12 @@ describe('Model Selection, Catalog & Effort Capabilities Specification', () => {
   describe('Reasoning Effort Capabilities & Parameter Flow', () => {
     it('resolves model with explicitly requested valid effort level', async () => {
       const resolution = await resolveUseCase.execute({
-        canonicalModelId: 'claude-sonnet',
+        canonicalModelId: 'oicunt.model.catalog-alpha',
         effort: 'high',
         correlationId: 'test-trace-1',
       });
 
-      expect(resolution.canonicalModelId).toBe('claude-sonnet');
+      expect(resolution.canonicalModelId).toBe('oicunt.model.catalog-alpha');
       expect(resolution.effort).toBe('high');
       expect(resolution.capabilities.reasoning).toBe(true);
       expect(resolution.capabilities.supportedEffortLevels).toContain('high');
@@ -266,11 +270,11 @@ describe('Model Selection, Catalog & Effort Capabilities Specification', () => {
 
     it('assigns model default effort level when effort is omitted on a reasoning model', async () => {
       const resolution = await resolveUseCase.execute({
-        canonicalModelId: 'claude-sonnet',
+        canonicalModelId: 'oicunt.model.catalog-alpha',
         correlationId: 'test-trace-2',
       });
 
-      expect(resolution.canonicalModelId).toBe('claude-sonnet');
+      expect(resolution.canonicalModelId).toBe('oicunt.model.catalog-alpha');
       // Defaults to configured defaultEffortLevel ('medium')
       expect(resolution.effort).toBe('medium');
     });
@@ -278,7 +282,7 @@ describe('Model Selection, Catalog & Effort Capabilities Specification', () => {
     it('rejects effort parameter on models that do not support reasoning with UNSUPPORTED_EFFORT_LEVEL', async () => {
       await expect(
         resolveUseCase.execute({
-          canonicalModelId: 'gpt-4o',
+          canonicalModelId: 'oicunt.model.catalog-beta',
           effort: 'high',
           correlationId: 'test-trace-3',
         }),
@@ -286,7 +290,7 @@ describe('Model Selection, Catalog & Effort Capabilities Specification', () => {
 
       try {
         await resolveUseCase.execute({
-          canonicalModelId: 'gpt-4o',
+          canonicalModelId: 'oicunt.model.catalog-beta',
           effort: 'high',
           correlationId: 'test-trace-3',
         });
@@ -301,7 +305,7 @@ describe('Model Selection, Catalog & Effort Capabilities Specification', () => {
     it('rejects unsupported effort levels on reasoning models with UNSUPPORTED_EFFORT_LEVEL', async () => {
       await expect(
         resolveUseCase.execute({
-          canonicalModelId: 'claude-sonnet',
+          canonicalModelId: 'oicunt.model.catalog-alpha',
           effort: 'ultra-maximum',
           correlationId: 'test-trace-4',
         }),
@@ -309,7 +313,7 @@ describe('Model Selection, Catalog & Effort Capabilities Specification', () => {
 
       try {
         await resolveUseCase.execute({
-          canonicalModelId: 'claude-sonnet',
+          canonicalModelId: 'oicunt.model.catalog-alpha',
           effort: 'ultra-maximum',
           correlationId: 'test-trace-4',
         });
@@ -325,14 +329,14 @@ describe('Model Selection, Catalog & Effort Capabilities Specification', () => {
   describe('Multiple Provider Targets & Seamless Provider Replacement', () => {
     it('returns multiple ordered eligible provider targets for a single user-facing model', async () => {
       const resolution = await resolveUseCase.execute({
-        canonicalModelId: 'claude-sonnet',
+        canonicalModelId: 'oicunt.model.catalog-alpha',
         correlationId: 'test-trace-5',
       });
 
       expect(resolution.eligibleTargets).toHaveLength(2);
       // Priority 1 target is first
-      expect(resolution.eligibleTargets[0]?.targetId).toBe('target-anthropic-direct');
-      expect(resolution.eligibleTargets[0]?.provider).toBe('anthropic');
+      expect(resolution.eligibleTargets[0]?.targetId).toBe('target-provider-a-direct');
+      expect(resolution.eligibleTargets[0]?.provider).toBe('test-provider');
       expect(resolution.eligibleTargets[0]?.priority).toBe(1);
 
       // Priority 2 fallback target is second
@@ -342,26 +346,24 @@ describe('Model Selection, Catalog & Effort Capabilities Specification', () => {
     });
 
     it('seamlessly reroutes to fallback provider target when primary target is cordoned (maintenance)', async () => {
-      const model = (await repository.findById('claude-sonnet'))!;
+      const model = (await repository.findById('oicunt.model.catalog-alpha'))!;
 
-      // Cordon primary Anthropic direct target (simulate upstream vendor outage or quota exhaustion)
-      model.updateTargetStatus('target-anthropic-direct', 'maintenance');
+      // Cordon the primary target (simulate upstream outage or quota exhaustion)
+      model.updateTargetStatus('target-provider-a-direct', 'maintenance');
       await repository.save(model);
-      await cache.invalidateModel('claude-sonnet');
+      await cache.invalidateModel('oicunt.model.catalog-alpha');
 
       const resolution = await resolveUseCase.execute({
-        canonicalModelId: 'claude-sonnet',
+        canonicalModelId: 'oicunt.model.catalog-alpha',
         correlationId: 'test-trace-6',
       });
 
-      // User-facing model ID remains stable as 'claude-sonnet'! BILLY requires NO changes!
-      expect(resolution.canonicalModelId).toBe('claude-sonnet');
+      // User-facing model ID remains stable as 'oicunt.model.catalog-alpha'! BILLY requires NO changes!
+      expect(resolution.canonicalModelId).toBe('oicunt.model.catalog-alpha');
       expect(resolution.eligibleTargets).toHaveLength(1);
       expect(resolution.eligibleTargets[0]?.targetId).toBe('target-bedrock-fallback');
       expect(resolution.eligibleTargets[0]?.provider).toBe('bedrock');
-      expect(resolution.eligibleTargets[0]?.upstreamModelId).toBe(
-        'anthropic.claude-3-5-sonnet-20241022-v2:0',
-      );
+      expect(resolution.eligibleTargets[0]?.upstreamModelId).toBe('provider-b.model-alpha-v1');
     });
   });
 });

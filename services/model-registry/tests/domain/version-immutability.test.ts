@@ -31,7 +31,7 @@ describe('ModelVersion Domain Entity & Immutability', () => {
     expect(
       () =>
         new ModelVersion({
-          canonicalModelId: 'oicunt.model.general',
+          canonicalModelId: 'oicunt.model.catalog-alpha',
           version: 'v1.0.0',
           modalities: ['text'],
           capabilities: baseCapabilities,
@@ -43,7 +43,7 @@ describe('ModelVersion Domain Entity & Immutability', () => {
     expect(
       () =>
         new ModelVersion({
-          canonicalModelId: 'oicunt.model.general',
+          canonicalModelId: 'oicunt.model.catalog-alpha',
           version: 'v1.0.0',
           modalities: ['text'],
           capabilities: baseCapabilities,
@@ -57,7 +57,7 @@ describe('ModelVersion Domain Entity & Immutability', () => {
     expect(
       () =>
         new ModelVersion({
-          canonicalModelId: 'oicunt.model.general',
+          canonicalModelId: 'oicunt.model.catalog-alpha',
           version: 'v1.0.0',
           modalities: ['text'],
           capabilities: baseCapabilities,
@@ -71,7 +71,7 @@ describe('ModelVersion Domain Entity & Immutability', () => {
     expect(
       () =>
         new ModelVersion({
-          canonicalModelId: 'oicunt.model.general',
+          canonicalModelId: 'oicunt.model.catalog-alpha',
           version: 'latest',
           modalities: ['text'],
           capabilities: baseCapabilities,
@@ -83,7 +83,7 @@ describe('ModelVersion Domain Entity & Immutability', () => {
 
   it('prevents mutation of specifications when isImmutable is true', () => {
     const version = new ModelVersion({
-      canonicalModelId: 'oicunt.model.general',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       version: 'v1.0.0',
       modalities: ['text'],
       capabilities: baseCapabilities,
@@ -104,7 +104,7 @@ describe('ModelVersion Domain Entity & Immutability', () => {
 
   it('permits status changes on published immutable versions', () => {
     const version = new ModelVersion({
-      canonicalModelId: 'oicunt.model.general',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       version: 'v1.0.0',
       modalities: ['text'],
       capabilities: baseCapabilities,
@@ -123,7 +123,7 @@ describe('ModelVersion Domain Entity & Immutability', () => {
 
   it('allows specifications update prior to publishing', () => {
     const draftVersion = new ModelVersion({
-      canonicalModelId: 'oicunt.model.general',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       version: 'v1.0.0',
       modalities: ['text'],
       capabilities: baseCapabilities,
@@ -154,7 +154,7 @@ describe('ModelVersion Domain Entity & Immutability', () => {
   describe('Reasoning effort capabilities validation', () => {
     it('accepts valid supportedEffortLevels and defaultEffortLevel', () => {
       const version = new ModelVersion({
-        canonicalModelId: 'oicunt.model.reasoning',
+        canonicalModelId: 'oicunt.model.catalog-gamma',
         version: 'v1.0.0',
         modalities: ['text'],
         capabilities: {
@@ -173,7 +173,7 @@ describe('ModelVersion Domain Entity & Immutability', () => {
 
     it('preserves existing behavior for models that do not support effort levels', () => {
       const version = new ModelVersion({
-        canonicalModelId: 'oicunt.model.general',
+        canonicalModelId: 'oicunt.model.catalog-alpha',
         version: 'v1.0.0',
         modalities: ['text'],
         capabilities: baseCapabilities,
@@ -189,7 +189,7 @@ describe('ModelVersion Domain Entity & Immutability', () => {
       expect(
         () =>
           new ModelVersion({
-            canonicalModelId: 'oicunt.model.reasoning',
+            canonicalModelId: 'oicunt.model.catalog-gamma',
             version: 'v1.0.0',
             modalities: ['text'],
             capabilities: {
@@ -207,7 +207,7 @@ describe('ModelVersion Domain Entity & Immutability', () => {
       expect(
         () =>
           new ModelVersion({
-            canonicalModelId: 'oicunt.model.reasoning',
+            canonicalModelId: 'oicunt.model.catalog-gamma',
             version: 'v1.0.0',
             modalities: ['text'],
             capabilities: {
@@ -226,7 +226,7 @@ describe('ModelVersion Domain Entity & Immutability', () => {
       expect(
         () =>
           new ModelVersion({
-            canonicalModelId: 'oicunt.model.reasoning',
+            canonicalModelId: 'oicunt.model.catalog-gamma',
             version: 'v1.0.0',
             modalities: ['text'],
             capabilities: {
@@ -242,7 +242,7 @@ describe('ModelVersion Domain Entity & Immutability', () => {
 
     it('enforces effort level validation on updateSpecifications prior to publishing', () => {
       const draft = new ModelVersion({
-        canonicalModelId: 'oicunt.model.reasoning',
+        canonicalModelId: 'oicunt.model.catalog-gamma',
         version: 'v1.0.0',
         modalities: ['text'],
         capabilities: baseCapabilities,

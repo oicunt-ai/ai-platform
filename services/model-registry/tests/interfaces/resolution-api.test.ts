@@ -16,7 +16,7 @@ describe('HTTP Resolution API Integration', () => {
 
     // Seed canonical model
     const model = new CanonicalModel({
-      id: 'oicunt.model.general',
+      id: 'oicunt.model.catalog-alpha',
       displayName: 'General Intelligence',
       description: 'Conversational frontier model',
       activeVersion: 'v1.0.0',
@@ -63,10 +63,10 @@ describe('HTTP Resolution API Integration', () => {
     });
 
     const target1 = new ModelTarget({
-      id: 'target-anthropic-sonnet',
+      id: 'target-provider-a-alpha',
       modelVersionId: v1.id,
-      provider: 'anthropic',
-      upstreamModelId: 'claude-3-5-sonnet',
+      provider: 'test-provider',
+      upstreamModelId: 'provider-model-alpha',
       priority: 1,
       weight: 100,
     });
@@ -75,7 +75,7 @@ describe('HTTP Resolution API Integration', () => {
       id: 'target-openai-gpt4o',
       modelVersionId: v1.id,
       provider: 'openai',
-      upstreamModelId: 'gpt-4o',
+      upstreamModelId: 'provider-model-beta',
       priority: 2,
       weight: 100,
     });
@@ -145,7 +145,7 @@ describe('HTTP Resolution API Integration', () => {
 
   it('rejects resolution requests without X-Service-Name with 401 UNAUTHORIZED', async () => {
     const res = await fetch(
-      `http://127.0.0.1:${port}/internal/v1/models/resolve/oicunt.model.general`,
+      `http://127.0.0.1:${port}/internal/v1/models/resolve/oicunt.model.catalog-alpha`,
     );
 
     expect(res.status).toBe(401);
@@ -155,7 +155,7 @@ describe('HTTP Resolution API Integration', () => {
 
   it('GET /internal/v1/models/resolve/:id resolves active model targets and reflects correlation ID', async () => {
     const res = await fetch(
-      `http://127.0.0.1:${port}/internal/v1/models/resolve/oicunt.model.general`,
+      `http://127.0.0.1:${port}/internal/v1/models/resolve/oicunt.model.catalog-alpha`,
       {
         headers: {
           'x-service-name': 'ai-orchestrator',
@@ -177,16 +177,16 @@ describe('HTTP Resolution API Integration', () => {
       };
     };
     expect(json.success).toBe(true);
-    expect(json.data.canonicalModelId).toBe('oicunt.model.general');
+    expect(json.data.canonicalModelId).toBe('oicunt.model.catalog-alpha');
     expect(json.data.version).toBe('v1.0.0');
     expect(json.data.eligibleTargets).toHaveLength(2);
-    expect(json.data.eligibleTargets[0]?.targetId).toBe('target-anthropic-sonnet');
+    expect(json.data.eligibleTargets[0]?.targetId).toBe('target-provider-a-alpha');
     expect(json.data.routingPolicy.strategy).toBe('priority-fallback');
   });
 
   it('GET /internal/v1/models/resolve/:id?version=latest resolves via alias pointer', async () => {
     const res = await fetch(
-      `http://127.0.0.1:${port}/internal/v1/models/resolve/oicunt.model.general?version=latest`,
+      `http://127.0.0.1:${port}/internal/v1/models/resolve/oicunt.model.catalog-alpha?version=latest`,
       {
         headers: {
           'x-service-name': 'ai-orchestrator',
@@ -246,13 +246,13 @@ describe('HTTP Resolution API Integration', () => {
   });
 
   it('returns 503 MODEL_IN_MAINTENANCE when version is set to maintenance', async () => {
-    const model = (await repository.findById('oicunt.model.general'))!;
+    const model = (await repository.findById('oicunt.model.catalog-alpha'))!;
     model.updateVersionStatus('v1.0.0', 'maintenance');
     await repository.save(model);
     await cache.clear();
 
     const res = await fetch(
-      `http://127.0.0.1:${port}/internal/v1/models/resolve/oicunt.model.general`,
+      `http://127.0.0.1:${port}/internal/v1/models/resolve/oicunt.model.catalog-alpha`,
       {
         headers: {
           'x-service-name': 'ai-orchestrator',

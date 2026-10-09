@@ -11,7 +11,7 @@ describe('Resolution Determinism & Fallback Invariant Tests', () => {
     const useCase = new ResolveModelUseCase(repository, cache);
 
     const model = new CanonicalModel({
-      id: 'oicunt.model.general',
+      id: 'oicunt.model.catalog-alpha',
       displayName: 'General Intelligence',
       description: 'Desc',
       activeVersion: 'v1.0.0',
@@ -47,7 +47,7 @@ describe('Resolution Determinism & Fallback Invariant Tests', () => {
       id: 'target-2-p2-w50',
       modelVersionId: v1.id,
       provider: 'openai',
-      upstreamModelId: 'gpt-4o',
+      upstreamModelId: 'provider-model-beta',
       priority: 2,
       weight: 50,
     });
@@ -55,8 +55,8 @@ describe('Resolution Determinism & Fallback Invariant Tests', () => {
     const targetB = new ModelTarget({
       id: 'target-b-p1-w80',
       modelVersionId: v1.id,
-      provider: 'anthropic',
-      upstreamModelId: 'claude-3-5-sonnet',
+      provider: 'test-provider',
+      upstreamModelId: 'provider-model-alpha',
       priority: 1,
       weight: 80,
     });
@@ -64,8 +64,8 @@ describe('Resolution Determinism & Fallback Invariant Tests', () => {
     const targetC = new ModelTarget({
       id: 'target-c-p1-w100',
       modelVersionId: v1.id,
-      provider: 'anthropic',
-      upstreamModelId: 'claude-3-5-sonnet-fast',
+      provider: 'test-provider',
+      upstreamModelId: 'provider-model-alpha-fast',
       priority: 1,
       weight: 100,
     });
@@ -83,7 +83,7 @@ describe('Resolution Determinism & Fallback Invariant Tests', () => {
       id: 'target-3-p3-w100',
       modelVersionId: v1.id,
       provider: 'bedrock',
-      upstreamModelId: 'anthropic.claude-v2',
+      upstreamModelId: 'provider-b.model-v2',
       priority: 3,
       weight: 100,
     });
@@ -140,7 +140,7 @@ describe('Resolution Determinism & Fallback Invariant Tests', () => {
       await cache.clear();
 
       const response = await useCase.execute({
-        canonicalModelId: 'oicunt.model.general',
+        canonicalModelId: 'oicunt.model.catalog-alpha',
         correlationId: `run-${i}`,
       });
 
@@ -159,7 +159,7 @@ describe('Resolution Determinism & Fallback Invariant Tests', () => {
     const useCase = new ResolveModelUseCase(repository, cache);
 
     const model = new CanonicalModel({
-      id: 'oicunt.model.general',
+      id: 'oicunt.model.catalog-alpha',
       displayName: 'General Intelligence',
       description: 'Desc',
       activeVersion: 'v1.0.0',
@@ -188,8 +188,8 @@ describe('Resolution Determinism & Fallback Invariant Tests', () => {
     const primary = new ModelTarget({
       id: 'primary-target',
       modelVersionId: v1.id,
-      provider: 'anthropic',
-      upstreamModelId: 'claude-3-5-sonnet',
+      provider: 'test-provider',
+      upstreamModelId: 'provider-model-alpha',
       priority: 1,
       weight: 100,
     });
@@ -198,7 +198,7 @@ describe('Resolution Determinism & Fallback Invariant Tests', () => {
       id: 'secondary-target',
       modelVersionId: v1.id,
       provider: 'openai',
-      upstreamModelId: 'gpt-4o',
+      upstreamModelId: 'provider-model-beta',
       priority: 2,
       weight: 100,
     });
@@ -210,7 +210,7 @@ describe('Resolution Determinism & Fallback Invariant Tests', () => {
 
     // Initial: primary is at index 0
     const res1 = await useCase.execute({
-      canonicalModelId: 'oicunt.model.general',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       correlationId: 'trace-1',
     });
     expect(res1.eligibleTargets[0]?.targetId).toBe('primary-target');
@@ -222,7 +222,7 @@ describe('Resolution Determinism & Fallback Invariant Tests', () => {
 
     // After cordoning: secondary is promoted to index 0 deterministically
     const res2 = await useCase.execute({
-      canonicalModelId: 'oicunt.model.general',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       correlationId: 'trace-2',
     });
     expect(res2.eligibleTargets).toHaveLength(1);

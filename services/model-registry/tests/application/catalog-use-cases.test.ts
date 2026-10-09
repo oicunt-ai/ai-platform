@@ -29,7 +29,7 @@ describe('Catalog Management Use Cases & Audit Trail', () => {
     const useCase = new CreateCanonicalModelUseCase(modelRepo, auditRepo, cache);
 
     const model = await useCase.execute({
-      id: 'oicunt.model.coding',
+      id: 'oicunt.model.catalog-delta',
       displayName: 'Coding Expert',
       description: 'Specialized code generation model',
       activeVersion: 'v1.0.0',
@@ -38,10 +38,10 @@ describe('Catalog Management Use Cases & Audit Trail', () => {
       reason: 'Initial model catalog entry',
     });
 
-    expect(model.id).toBe('oicunt.model.coding');
+    expect(model.id).toBe('oicunt.model.catalog-delta');
     expect(model.activeVersion).toBe('v1.0.0');
 
-    const audits = await auditRepo.listByEntity('canonical_model', 'oicunt.model.coding');
+    const audits = await auditRepo.listByEntity('canonical_model', 'oicunt.model.catalog-delta');
     expect(audits).toHaveLength(1);
     expect(audits[0]?.action).toBe('CREATE');
     expect(audits[0]?.actorId).toBe('admin-user-1');
@@ -50,7 +50,7 @@ describe('Catalog Management Use Cases & Audit Trail', () => {
   it('creates model version, updates status, and verifies audit events', async () => {
     const createModel = new CreateCanonicalModelUseCase(modelRepo, auditRepo, cache);
     await createModel.execute({
-      id: 'oicunt.model.reasoning',
+      id: 'oicunt.model.catalog-gamma',
       displayName: 'Reasoning Engine',
       description: 'Complex logic deduction',
       activeVersion: 'v1.0.0',
@@ -60,7 +60,7 @@ describe('Catalog Management Use Cases & Audit Trail', () => {
 
     const createVersion = new CreateModelVersionUseCase(modelRepo, auditRepo, cache);
     const version = await createVersion.execute({
-      canonicalModelId: 'oicunt.model.reasoning',
+      canonicalModelId: 'oicunt.model.catalog-gamma',
       version: 'v1.0.0',
       modalities: ['text'],
       capabilities: {
@@ -84,7 +84,7 @@ describe('Catalog Management Use Cases & Audit Trail', () => {
 
     const updateStatus = new UpdateModelVersionStatusUseCase(modelRepo, auditRepo, cache);
     const updated = await updateStatus.execute({
-      canonicalModelId: 'oicunt.model.reasoning',
+      canonicalModelId: 'oicunt.model.catalog-gamma',
       version: 'v1.0.0',
       status: 'degraded',
       actorId: 'ops-bot',
@@ -94,7 +94,10 @@ describe('Catalog Management Use Cases & Audit Trail', () => {
 
     expect(updated.status).toBe('degraded');
 
-    const audits = await auditRepo.listByEntity('model_version', 'oicunt.model.reasoning:v1.0.0');
+    const audits = await auditRepo.listByEntity(
+      'model_version',
+      'oicunt.model.catalog-gamma:v1.0.0',
+    );
     expect(audits).toHaveLength(2);
     expect(audits[0]?.action).toBe('STATUS_CHANGE');
     expect(audits[0]?.actorId).toBe('ops-bot');
@@ -103,7 +106,7 @@ describe('Catalog Management Use Cases & Audit Trail', () => {
   it('creates model target and updates target status (cordoning)', async () => {
     const createModel = new CreateCanonicalModelUseCase(modelRepo, auditRepo, cache);
     await createModel.execute({
-      id: 'oicunt.model.general',
+      id: 'oicunt.model.catalog-alpha',
       displayName: 'General Intelligence',
       description: 'Desc',
       activeVersion: 'v1.0.0',
@@ -113,7 +116,7 @@ describe('Catalog Management Use Cases & Audit Trail', () => {
 
     const createVersion = new CreateModelVersionUseCase(modelRepo, auditRepo, cache);
     const version = await createVersion.execute({
-      canonicalModelId: 'oicunt.model.general',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       version: 'v1.0.0',
       modalities: ['text'],
       capabilities: {
@@ -134,23 +137,23 @@ describe('Catalog Management Use Cases & Audit Trail', () => {
 
     const createTarget = new CreateModelTargetUseCase(modelRepo, auditRepo, cache);
     const target = await createTarget.execute({
-      id: 'target-anthropic-1',
-      canonicalModelId: 'oicunt.model.general',
+      id: 'target-provider-a-1',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       modelVersionId: version.id,
-      provider: 'anthropic',
-      upstreamModelId: 'claude-3-5-sonnet',
+      provider: 'test-provider',
+      upstreamModelId: 'provider-model-alpha',
       priority: 1,
       weight: 100,
       actorId: 'admin-1',
       correlationId: 'trace-3',
     });
 
-    expect(target.id).toBe('target-anthropic-1');
+    expect(target.id).toBe('target-provider-a-1');
 
     const updateTargetStatus = new UpdateModelTargetStatusUseCase(modelRepo, auditRepo, cache);
     const cordoned = await updateTargetStatus.execute({
-      canonicalModelId: 'oicunt.model.general',
-      targetId: 'target-anthropic-1',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
+      targetId: 'target-provider-a-1',
       status: 'maintenance',
       actorId: 'ops-1',
       correlationId: 'trace-4',
@@ -163,7 +166,7 @@ describe('Catalog Management Use Cases & Audit Trail', () => {
   it('updates routing policy and verifies getModel reflects change', async () => {
     const createModel = new CreateCanonicalModelUseCase(modelRepo, auditRepo, cache);
     await createModel.execute({
-      id: 'oicunt.model.general',
+      id: 'oicunt.model.catalog-alpha',
       displayName: 'General',
       description: 'Desc',
       activeVersion: 'v1.0.0',
@@ -173,7 +176,7 @@ describe('Catalog Management Use Cases & Audit Trail', () => {
 
     const updatePolicy = new UpdateRoutingPolicyUseCase(modelRepo, auditRepo, cache);
     await updatePolicy.execute({
-      canonicalModelId: 'oicunt.model.general',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       strategy: 'weighted-round-robin',
       maxFallbackAttempts: 5,
       degradationBehavior: 'fallback-to-fast',
@@ -182,7 +185,7 @@ describe('Catalog Management Use Cases & Audit Trail', () => {
     });
 
     const getModel = new GetModelUseCase(modelRepo);
-    const detail = await getModel.execute('oicunt.model.general');
+    const detail = await getModel.execute('oicunt.model.catalog-alpha');
 
     expect(detail.routingPolicy.strategy).toBe('weighted-round-robin');
     expect(detail.routingPolicy.maxFallbackAttempts).toBe(5);
@@ -192,7 +195,7 @@ describe('Catalog Management Use Cases & Audit Trail', () => {
   it('sets alias and lists all models', async () => {
     const createModel = new CreateCanonicalModelUseCase(modelRepo, auditRepo, cache);
     await createModel.execute({
-      id: 'oicunt.model.general',
+      id: 'oicunt.model.catalog-alpha',
       displayName: 'General',
       description: 'Desc',
       activeVersion: 'v1.0.0',
@@ -202,7 +205,7 @@ describe('Catalog Management Use Cases & Audit Trail', () => {
 
     const setAlias = new SetModelAliasUseCase(modelRepo, auditRepo, cache);
     const alias = await setAlias.execute({
-      canonicalModelId: 'oicunt.model.general',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       aliasName: 'preview',
       targetVersion: 'v1.0.0',
       actorId: 'admin-1',
@@ -214,6 +217,6 @@ describe('Catalog Management Use Cases & Audit Trail', () => {
     const listModels = new ListModelsUseCase(modelRepo);
     const list = await listModels.execute();
     expect(list).toHaveLength(1);
-    expect(list[0]?.id).toBe('oicunt.model.general');
+    expect(list[0]?.id).toBe('oicunt.model.catalog-alpha');
   });
 });

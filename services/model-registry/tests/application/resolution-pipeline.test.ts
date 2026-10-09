@@ -28,7 +28,7 @@ describe('ResolveModelUseCase - 7-Step Resolution Pipeline', () => {
 
   const seedModel = async () => {
     const model = new CanonicalModel({
-      id: 'oicunt.model.general',
+      id: 'oicunt.model.catalog-alpha',
       displayName: 'General Intelligence',
       description: 'Production frontier model',
       activeVersion: 'v1.0.0',
@@ -76,10 +76,10 @@ describe('ResolveModelUseCase - 7-Step Resolution Pipeline', () => {
 
     // Targets for v1: primary and secondary fallback
     const target1 = new ModelTarget({
-      id: 'target-anthropic-primary',
+      id: 'target-provider-a-primary',
       modelVersionId: v1.id,
-      provider: 'anthropic',
-      upstreamModelId: 'claude-3-5-sonnet',
+      provider: 'test-provider',
+      upstreamModelId: 'provider-model-alpha',
       priority: 1,
       weight: 100,
       region: 'us-east-1',
@@ -89,7 +89,7 @@ describe('ResolveModelUseCase - 7-Step Resolution Pipeline', () => {
       id: 'target-openai-fallback',
       modelVersionId: v1.id,
       provider: 'openai',
-      upstreamModelId: 'gpt-4o',
+      upstreamModelId: 'provider-model-beta',
       priority: 2,
       weight: 100,
       region: 'us-east-1',
@@ -133,7 +133,7 @@ describe('ResolveModelUseCase - 7-Step Resolution Pipeline', () => {
 
     await expect(
       useCase.execute({
-        canonicalModelId: 'oicunt.model.general',
+        canonicalModelId: 'oicunt.model.catalog-alpha',
         correlationId: '',
       }),
     ).rejects.toThrowError(ModelValidationError);
@@ -152,14 +152,14 @@ describe('ResolveModelUseCase - 7-Step Resolution Pipeline', () => {
     await seedModel();
 
     const response = await useCase.execute({
-      canonicalModelId: 'oicunt.model.general',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       correlationId: 'corr-1',
     });
 
-    expect(response.canonicalModelId).toBe('oicunt.model.general');
+    expect(response.canonicalModelId).toBe('oicunt.model.catalog-alpha');
     expect(response.version).toBe('v1.0.0');
     expect(response.eligibleTargets).toHaveLength(2);
-    expect(response.eligibleTargets[0]?.targetId).toBe('target-anthropic-primary');
+    expect(response.eligibleTargets[0]?.targetId).toBe('target-provider-a-primary');
     expect(response.eligibleTargets[1]?.targetId).toBe('target-openai-fallback');
   });
 
@@ -167,7 +167,7 @@ describe('ResolveModelUseCase - 7-Step Resolution Pipeline', () => {
     await seedModel();
 
     const response = await useCase.execute({
-      canonicalModelId: 'oicunt.model.general',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       version: 'latest',
       correlationId: 'corr-1',
     });
@@ -184,7 +184,7 @@ describe('ResolveModelUseCase - 7-Step Resolution Pipeline', () => {
 
     await expect(
       useCase.execute({
-        canonicalModelId: 'oicunt.model.general',
+        canonicalModelId: 'oicunt.model.catalog-alpha',
         correlationId: 'corr-1',
       }),
     ).rejects.toThrowError(ModelInMaintenanceError);
@@ -197,7 +197,7 @@ describe('ResolveModelUseCase - 7-Step Resolution Pipeline', () => {
 
     await expect(
       useCase.execute({
-        canonicalModelId: 'oicunt.model.general',
+        canonicalModelId: 'oicunt.model.catalog-alpha',
         correlationId: 'corr-1',
       }),
     ).rejects.toThrowError(ModelDeprecatedError);
@@ -205,13 +205,13 @@ describe('ResolveModelUseCase - 7-Step Resolution Pipeline', () => {
 
   it('Step 5: throws NoEligibleTargetsError when all targets are cordoned (maintenance)', async () => {
     const { model } = await seedModel();
-    model.updateTargetStatus('target-anthropic-primary', 'maintenance');
+    model.updateTargetStatus('target-provider-a-primary', 'maintenance');
     model.updateTargetStatus('target-openai-fallback', 'maintenance');
     await repository.save(model);
 
     await expect(
       useCase.execute({
-        canonicalModelId: 'oicunt.model.general',
+        canonicalModelId: 'oicunt.model.catalog-alpha',
         correlationId: 'corr-1',
       }),
     ).rejects.toThrowError(NoEligibleTargetsError);
@@ -221,29 +221,29 @@ describe('ResolveModelUseCase - 7-Step Resolution Pipeline', () => {
     await seedModel();
 
     const first = await useCase.execute({
-      canonicalModelId: 'oicunt.model.general',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       correlationId: 'corr-1',
     });
 
     // Modify repository directly
-    const model = (await repository.findById('oicunt.model.general'))!;
-    model.updateTargetStatus('target-anthropic-primary', 'maintenance');
+    const model = (await repository.findById('oicunt.model.catalog-alpha'))!;
+    model.updateTargetStatus('target-provider-a-primary', 'maintenance');
     await repository.save(model);
 
     // Second call hits cache, so still returns cached response
     const second = await useCase.execute({
-      canonicalModelId: 'oicunt.model.general',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       correlationId: 'corr-2',
     });
 
     expect(second.resolvedAt).toBe(first.resolvedAt);
 
     // Invalidate cache
-    await cache.invalidateModel('oicunt.model.general');
+    await cache.invalidateModel('oicunt.model.catalog-alpha');
 
-    // Third call hits repository and reflects target-anthropic-primary in maintenance
+    // Third call hits repository and reflects target-provider-a-primary in maintenance
     const third = await useCase.execute({
-      canonicalModelId: 'oicunt.model.general',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       correlationId: 'corr-3',
     });
 

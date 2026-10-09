@@ -17,18 +17,18 @@ describe('HTTP Catalog Selection & Effort API Integration', () => {
     auditRepo = new InMemoryAuditRepository();
     cache = new InMemoryModelCache();
 
-    // 1. Claude Sonnet with effort levels
-    const sonnet = new CanonicalModel({
-      id: 'claude-sonnet',
-      displayName: 'Claude Sonnet',
+    // 1. Catalog Model Alpha with effort levels
+    const alpha = new CanonicalModel({
+      id: 'oicunt.model.catalog-alpha',
+      displayName: 'Catalog Model Alpha',
       description: 'High reasoning frontier model',
-      family: 'anthropic',
+      family: 'test-provider',
       activeVersion: 'v1.0.0',
     });
 
-    const sonnetV1 = new ModelVersion({
-      id: 'sonnet-ver-1',
-      canonicalModelId: sonnet.id,
+    const alphaV1 = new ModelVersion({
+      id: 'alpha-ver-1',
+      canonicalModelId: alpha.id,
       version: 'v1.0.0',
       modalities: ['text', 'image'],
       capabilities: {
@@ -49,32 +49,32 @@ describe('HTTP Catalog Selection & Effort API Integration', () => {
     });
 
     const target1 = new ModelTarget({
-      id: 'target-anthropic-direct',
-      modelVersionId: sonnetV1.id,
-      provider: 'anthropic',
-      upstreamModelId: 'claude-3-5-sonnet-20241022',
+      id: 'target-provider-a-direct',
+      modelVersionId: alphaV1.id,
+      provider: 'test-provider',
+      upstreamModelId: 'provider-model-alpha-v1',
       priority: 1,
       weight: 100,
     });
 
     const target2 = new ModelTarget({
       id: 'target-bedrock-backup',
-      modelVersionId: sonnetV1.id,
+      modelVersionId: alphaV1.id,
       provider: 'bedrock',
-      upstreamModelId: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+      upstreamModelId: 'provider-b.model-alpha-v1',
       priority: 2,
       weight: 100,
     });
 
-    sonnet.addVersion(sonnetV1);
-    sonnet.addTarget(target1);
-    sonnet.addTarget(target2);
-    await modelRepo.save(sonnet);
+    alpha.addVersion(alphaV1);
+    alpha.addTarget(target1);
+    alpha.addTarget(target2);
+    await modelRepo.save(alpha);
 
-    // 2. GPT-4o without effort levels
+    // 2. Catalog Model Beta without effort levels
     const gpt = new CanonicalModel({
-      id: 'gpt-4o',
-      displayName: 'GPT-4o',
+      id: 'oicunt.model.catalog-beta',
+      displayName: 'Catalog Model Beta',
       description: 'Omni intelligence',
       family: 'openai',
       activeVersion: 'v1.0.0',
@@ -104,7 +104,7 @@ describe('HTTP Catalog Selection & Effort API Integration', () => {
       id: 'target-openai-direct',
       modelVersionId: gptV1.id,
       provider: 'openai',
-      upstreamModelId: 'gpt-4o-2024-08-06',
+      upstreamModelId: 'provider-model-beta-2024-08-06',
       priority: 1,
       weight: 100,
     });
@@ -113,10 +113,10 @@ describe('HTTP Catalog Selection & Effort API Integration', () => {
     gpt.addTarget(gptTarget);
     await modelRepo.save(gpt);
 
-    // 3. Gemini Flash in maintenance (to verify selectableOnly filtering)
+    // 3. Catalog Model Gamma in maintenance (to verify selectableOnly filtering)
     const gemini = new CanonicalModel({
-      id: 'gemini-flash',
-      displayName: 'Gemini Flash',
+      id: 'oicunt.model.catalog-gamma',
+      displayName: 'Catalog Model Gamma',
       description: 'Fast lightweight model in maintenance',
       family: 'google',
       activeVersion: 'v1.0.0',
@@ -217,18 +217,21 @@ describe('HTTP Catalog Selection & Effort API Integration', () => {
     expect(json.success).toBe(true);
     // Omitting selectableOnly must default to selectableOnly=true (only 2 selectable models returned)
     expect(json.data).toHaveLength(2);
-    expect(json.data.map((m) => m.id)).toEqual(['claude-sonnet', 'gpt-4o']);
+    expect(json.data.map((m) => m.id)).toEqual([
+      'oicunt.model.catalog-beta',
+      'oicunt.model.catalog-alpha',
+    ]);
     expect(json.data.every((m) => m.isSelectable)).toBe(true);
 
-    const sonnet = json.data.find((m) => m.id === 'claude-sonnet')!;
-    expect(sonnet).toBeDefined();
-    expect(sonnet.displayName).toBe('Claude Sonnet');
-    expect(sonnet.family).toBe('anthropic');
-    expect(sonnet.capabilities.reasoning).toBe(true);
-    expect(sonnet.capabilities.supportedEffortLevels).toEqual(['low', 'medium', 'high']);
+    const alpha = json.data.find((m) => m.id === 'oicunt.model.catalog-alpha')!;
+    expect(alpha).toBeDefined();
+    expect(alpha.displayName).toBe('Catalog Model Alpha');
+    expect(alpha.family).toBe('test-provider');
+    expect(alpha.capabilities.reasoning).toBe(true);
+    expect(alpha.capabilities.supportedEffortLevels).toEqual(['low', 'medium', 'high']);
 
     // Ensure raw target info is not present
-    expect((sonnet as unknown as Record<string, unknown>)['eligibleTargets']).toBeUndefined();
+    expect((alpha as unknown as Record<string, unknown>)['eligibleTargets']).toBeUndefined();
   });
 
   it('GET /internal/v1/catalog?selectableOnly=true returns only available/degraded models', async () => {
@@ -244,7 +247,10 @@ describe('HTTP Catalog Selection & Effort API Integration', () => {
       data: Array<{ id: string; isSelectable: boolean }>;
     };
     expect(json.data).toHaveLength(2);
-    expect(json.data.map((m) => m.id)).toEqual(['claude-sonnet', 'gpt-4o']);
+    expect(json.data.map((m) => m.id)).toEqual([
+      'oicunt.model.catalog-beta',
+      'oicunt.model.catalog-alpha',
+    ]);
     expect(json.data.every((m) => m.isSelectable)).toBe(true);
   });
 
@@ -261,7 +267,7 @@ describe('HTTP Catalog Selection & Effort API Integration', () => {
       data: Array<{ id: string; isSelectable: boolean; status: string }>;
     };
     expect(json.data).toHaveLength(3);
-    const geminiEntry = json.data.find((m) => m.id === 'gemini-flash');
+    const geminiEntry = json.data.find((m) => m.id === 'oicunt.model.catalog-gamma');
     expect(geminiEntry).toBeDefined();
     expect(geminiEntry?.isSelectable).toBe(false);
     expect(geminiEntry?.status).toBe('maintenance');
@@ -280,13 +286,13 @@ describe('HTTP Catalog Selection & Effort API Integration', () => {
       data: Array<{ id: string; family: string }>;
     };
     expect(json.data).toHaveLength(1);
-    expect(json.data[0]?.id).toBe('gpt-4o');
+    expect(json.data[0]?.id).toBe('oicunt.model.catalog-beta');
     expect(json.data[0]?.family).toBe('openai');
   });
 
   it('GET /internal/v1/models/resolve/:id?effort=high resolves with validated effort', async () => {
     const res = await fetch(
-      `http://127.0.0.1:${port}/internal/v1/models/resolve/claude-sonnet?effort=high`,
+      `http://127.0.0.1:${port}/internal/v1/models/resolve/oicunt.model.catalog-alpha?effort=high`,
       {
         headers: {
           'x-service-name': 'ai-orchestrator',
@@ -303,14 +309,14 @@ describe('HTTP Catalog Selection & Effort API Integration', () => {
         eligibleTargets: Array<{ targetId: string }>;
       };
     };
-    expect(json.data.canonicalModelId).toBe('claude-sonnet');
+    expect(json.data.canonicalModelId).toBe('oicunt.model.catalog-alpha');
     expect(json.data.effort).toBe('high');
     expect(json.data.eligibleTargets).toHaveLength(2);
   });
 
   it('GET /internal/v1/models/resolve/:id?effort=extreme rejects unsupported effort with 400 UNSUPPORTED_EFFORT_LEVEL', async () => {
     const res = await fetch(
-      `http://127.0.0.1:${port}/internal/v1/models/resolve/claude-sonnet?effort=extreme`,
+      `http://127.0.0.1:${port}/internal/v1/models/resolve/oicunt.model.catalog-alpha?effort=extreme`,
       {
         headers: {
           'x-service-name': 'ai-orchestrator',
@@ -328,7 +334,7 @@ describe('HTTP Catalog Selection & Effort API Integration', () => {
 
   it('GET /internal/v1/models/resolve/:id?effort=high rejects effort on non-reasoning model with 400', async () => {
     const res = await fetch(
-      `http://127.0.0.1:${port}/internal/v1/models/resolve/gpt-4o?effort=high`,
+      `http://127.0.0.1:${port}/internal/v1/models/resolve/oicunt.model.catalog-beta?effort=high`,
       {
         headers: {
           'x-service-name': 'ai-orchestrator',
@@ -346,7 +352,7 @@ describe('HTTP Catalog Selection & Effort API Integration', () => {
   it('PUT /internal/v1/models/:id/targets/:targetId/status cordons target and subsequent resolution reflects change', async () => {
     // Admin cordons target 1
     const cordonRes = await fetch(
-      `http://127.0.0.1:${port}/internal/v1/models/claude-sonnet/targets/target-anthropic-direct/status`,
+      `http://127.0.0.1:${port}/internal/v1/models/oicunt.model.catalog-alpha/targets/target-provider-a-direct/status`,
       {
         method: 'PUT',
         headers: {
@@ -363,7 +369,7 @@ describe('HTTP Catalog Selection & Effort API Integration', () => {
 
     // Subsequent resolution for BILLY automatically serves the fallback target
     const resolveRes = await fetch(
-      `http://127.0.0.1:${port}/internal/v1/models/resolve/claude-sonnet`,
+      `http://127.0.0.1:${port}/internal/v1/models/resolve/oicunt.model.catalog-alpha`,
       {
         headers: {
           'x-service-name': 'ai-orchestrator',

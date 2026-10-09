@@ -12,7 +12,7 @@ The **Model Registry** (`services/model-registry`) is the singular, authoritativ
 
 It serves two primary operational roles:
 
-1. **Dynamic Model Catalog Provider for Client Applications (Model Selection)**: Exposes a user-facing, sanitized model catalog (`GET /internal/v1/catalog`) consumed by BILLY and client orchestrators to render dynamic model pickers (e.g. Claude Sonnet, Claude Opus, GPT-4o, Gemini Pro) and dynamic reasoning effort selectors (`low`, `medium`, `high`).
+1. **Dynamic Model Catalog Provider for Client Applications (Model Selection)**: Exposes a user-facing, sanitized model catalog (`GET /internal/v1/catalog`) consumed by BILLY and client orchestrators to render the individual models currently made available by OICUNT and their supported controls.
 2. **Deterministic Model Resolution Authority (Model Resolution)**: Deterministically resolves user-selected canonical models and optional effort levels into concrete, eligible execution targets, token limits, and routing policies consumed by the **AI Orchestrator** and executed by the **Model Gateway** (see [Model Gateway Contract](./model-gateway.md) and [AI Orchestrator Contract](./ai-orchestrator.md)).
 
 ```
@@ -56,8 +56,8 @@ It serves two primary operational roles:
 
 ### 2.1 What the Model Registry Owns
 
-1. **User-Facing Canonical Model Identifiers**: Authoritative catalog of model families and user-selectable models (`claude-sonnet`, `claude-opus`, `claude-haiku`, `gpt-4o`, `gemini-pro`, as well as namespaced identifiers like `oicunt.model.general`).
-2. **Model Family Grouping**: Categorization by underlying model lineage (`claude`, `gpt`, `gemini`, etc.).
+1. **User-Facing Canonical Model Identifiers**: Authoritative catalog of user-selectable models. Every public ID matches `oicunt.model.<catalog-slug>` and identifies one catalog entry rather than a logical capability alias.
+2. **Model Family Grouping**: Optional, non-secret catalog grouping metadata. Family is never used as the public model selector.
 3. **Model Selection vs. Model Resolution Separation**:
    - **Model Selection**: Client/BILLY querying the dynamic catalog to present user options without exposing provider targets or secrets.
    - **Model Resolution**: OICUNT determining eligible execution endpoints and applying routing rules.
@@ -69,7 +69,7 @@ It serves two primary operational roles:
 9. **Availability Status**: Administrative lifecycle states (`available`, `degraded`, `maintenance`, `deprecated`).
 10. **Model Aliases**: Dynamic pointers (`default`, `latest`, `preview`, `fast`) and tenant-specific overrides.
 11. **Eligible Provider / Model Targets**: Approved mapping of canonical models to underlying vendor models (`provider`, `upstreamModelId`, `region`, `priority`, `weight`).
-12. **Transparent Provider Replacement**: Support for multiple provider targets per model version (e.g. Anthropic direct + AWS Bedrock fallback), enabling transparent target cordoning and failover without changing the user-selected model.
+12. **Transparent Provider Replacement**: Support for multiple provider targets per model version, enabling transparent target cordoning and failover without changing the user-selected model.
 13. **Routing Policies**: Strategy rules (`priority-fallback`, `weighted-round-robin`, `lowest-latency`), max fallback counts, and degradation behaviors.
 14. **Audit History**: Complete, tamper-evident ledger of every mutation to models, versions, targets, aliases, and policies.
 
@@ -78,10 +78,10 @@ It serves two primary operational roles:
 > [!IMPORTANT]
 > The following invariants are non-negotiable architectural constraints for the Model Registry:
 
-1. **Zero Provider API Calls**: Model Registry **never** initiates network connections to upstream model providers (Anthropic, OpenAI, Google, AWS Bedrock).
+1. **Zero Provider API Calls**: Model Registry **never** initiates network connections to upstream model providers.
 2. **Zero Provider Credentials**: Model Registry **never** stores, reads, or possesses provider API keys, tokens, or IAM secrets. Provider credentials reside exclusively in Model Gateway provider adapters.
-3. **Zero Provider SDK Dependencies**: Model Registry **never** imports vendor SDKs (`@anthropic-ai/sdk`, `openai`, `@google/genai`).
-4. **Internal Upstream Identifiers**: Provider-specific model IDs (e.g. `claude-3-5-sonnet-20241022`, `gpt-4o-2024-08-06`) are strictly internal target data. They are never exposed to BILLY or external clients.
+3. **Zero Provider SDK Dependencies**: Model Registry **never** imports vendor SDKs (`a vendor SDK`, `openai`, `@google/genai`).
+4. **Internal Upstream Identifiers**: Provider-specific model IDs (e.g. `provider-model-alpha-v1`, `provider-model-beta-2024-08-06`) are strictly internal target data. They are never exposed to BILLY or external clients.
 5. **Effort is a Parameter, Not a Model Identity**: Reasoning effort levels (`low`, `medium`, `high`) are model capabilities and runtime request parameters, never separate canonical models.
 6. **Separation of What vs. How**: Model Registry decides **WHAT** model targets are eligible; Model Gateway decides **HOW** to execute against those eligible targets.
 7. **Exclusive Database Ownership**: Model Registry owns its dedicated PostgreSQL database/schema. No database or table sharing with Model Gateway, Orchestrator, or any other service.
@@ -98,10 +98,10 @@ The Model Registry domain follows Domain-Driven Design (DDD). The **Canonical Mo
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
 │                  CanonicalModel (Aggregate Root)                       │
-│  id: CanonicalModelId ("claude-sonnet" | "gpt-4o")                     │
-│  name: "Claude Sonnet"                                                 │
+│  id: CanonicalModelId ("oicunt.model.<catalog-slug>")                         │
+│  name: "Catalog Model Alpha"                                                 │
 │  description: "Balanced frontier reasoning and coding"                 │
-│  family: "claude"                                                      │
+│  family: "catalog-alpha"                                                      │
 │  activeVersion: "v1.0.0"                                               │
 │  createdAt, updatedAt                                                  │
 ├────────────────────────────────────────────────────────────────────────┤
@@ -118,16 +118,16 @@ The Model Registry domain follows Domain-Driven Design (DDD). The **Canonical Mo
 │  │     isImmutable: true                                               │
 │  │                                                                     │
 │  ├── ModelTarget (Entity, 1..*)                                        │
-│  │     targetId: "target-anthropic-direct"                             │
-│  │     provider: "anthropic" (ModelProviderType)                       │
-│  │     upstreamModelId: "claude-3-5-sonnet-20241022"                   │
+│  │     targetId: "target-provider-a-direct"                             │
+│  │     provider: "test-provider" (ModelProviderType)                       │
+│  │     upstreamModelId: "provider-model-alpha-v1"                   │
 │  │     priority: 1                                                     │
 │  │     weight: 100                                                     │
 │  │     status: AvailabilityStatus ("available")                        │
 │  │                                                                     │
 │  │     targetId: "target-bedrock-fallback"                             │
 │  │     provider: "bedrock" (ModelProviderType)                         │
-│  │     upstreamModelId: "anthropic.claude-3-5-sonnet-20241022-v2:0"    │
+│  │     upstreamModelId: "provider-b.model-alpha-v1"    │
 │  │     priority: 2                                                     │
 │  │     weight: 100                                                     │
 │  │     status: AvailabilityStatus ("available")                        │
@@ -198,15 +198,15 @@ The Model Registry strictly owns its persistence layer. It requires a dedicated 
 
 #### 1. Table `canonical_models`
 
-| Column           | Type           | Constraints              | Description                                                               |
-| ---------------- | -------------- | ------------------------ | ------------------------------------------------------------------------- |
-| `id`             | `VARCHAR(64)`  | `PRIMARY KEY`            | Canonical model identifier (e.g. `claude-sonnet`, `oicunt.model.general`) |
-| `display_name`   | `VARCHAR(128)` | `NOT NULL`               | Human-readable name (e.g. `Claude Sonnet`)                                |
-| `description`    | `TEXT`         | `NOT NULL`               | Description of model capabilities                                         |
-| `family`         | `VARCHAR(64)`  | `NULL`                   | Model family grouping (e.g. `claude`, `gpt`, `gemini`)                    |
-| `active_version` | `VARCHAR(32)`  | `NOT NULL`               | Currently pinned active version (e.g. `v1.0.0`)                           |
-| `created_at`     | `TIMESTAMPTZ`  | `NOT NULL DEFAULT NOW()` | Record creation timestamp                                                 |
-| `updated_at`     | `TIMESTAMPTZ`  | `NOT NULL DEFAULT NOW()` | Record last modification timestamp                                        |
+| Column           | Type           | Constraints              | Description                                                           |
+| ---------------- | -------------- | ------------------------ | --------------------------------------------------------------------- |
+| `id`             | `VARCHAR(64)`  | `PRIMARY KEY`            | Stable OICUNT model identifier matching `oicunt.model.<catalog-slug>` |
+| `display_name`   | `VARCHAR(128)` | `NOT NULL`               | Human-readable name (e.g. `Catalog Model Alpha`)                      |
+| `description`    | `TEXT`         | `NOT NULL`               | Description of model capabilities                                     |
+| `family`         | `VARCHAR(64)`  | `NULL`                   | Model family grouping (e.g. `catalog-alpha`, `gpt`, `gemini`)         |
+| `active_version` | `VARCHAR(32)`  | `NOT NULL`               | Currently pinned active version (e.g. `v1.0.0`)                       |
+| `created_at`     | `TIMESTAMPTZ`  | `NOT NULL DEFAULT NOW()` | Record creation timestamp                                             |
+| `updated_at`     | `TIMESTAMPTZ`  | `NOT NULL DEFAULT NOW()` | Record last modification timestamp                                    |
 
 #### 2. Table `model_versions`
 
@@ -227,21 +227,21 @@ The Model Registry strictly owns its persistence layer. It requires a dedicated 
 
 #### 3. Table `model_targets`
 
-| Column               | Type           | Constraints                              | Description                                                  |
-| -------------------- | -------------- | ---------------------------------------- | ------------------------------------------------------------ |
-| `id`                 | `VARCHAR(64)`  | `PRIMARY KEY`                            | Unique target identifier (e.g. `target-anthropic-sonnet-us`) |
-| `model_version_id`   | `UUID`         | `NOT NULL REFERENCES model_versions(id)` | Associated model version                                     |
-| `provider`           | `VARCHAR(32)`  | `NOT NULL`                               | Upstream provider (`anthropic`, `openai`, `google`, etc.)    |
-| `upstream_model_id`  | `VARCHAR(128)` | `NOT NULL`                               | Vendor model string (internal only)                          |
-| `priority`           | `INT`          | `NOT NULL DEFAULT 1`                     | Failover order (1 = primary, 2 = secondary, etc.)            |
-| `weight`             | `INT`          | `NOT NULL DEFAULT 100`                   | Traffic weight for identical priority targets                |
-| `region`             | `VARCHAR(32)`  | `NULL`                                   | Deployment region identifier                                 |
-| `adapter_options`    | `JSONB`        | `NULL`                                   | Non-secret adapter tuning parameters                         |
-| `supports_streaming` | `BOOLEAN`      | `NOT NULL DEFAULT TRUE`                  | Server-Sent Events capability                                |
-| `status`             | `VARCHAR(24)`  | `NOT NULL DEFAULT 'available'`           | Target operational health status                             |
-| `max_concurrency`    | `INT`          | `NULL`                                   | Concurrency ceiling                                          |
-| `created_at`         | `TIMESTAMPTZ`  | `NOT NULL DEFAULT NOW()`                 | Creation timestamp                                           |
-| `updated_at`         | `TIMESTAMPTZ`  | `NOT NULL DEFAULT NOW()`                 | Update timestamp                                             |
+| Column               | Type           | Constraints                              | Description                                                   |
+| -------------------- | -------------- | ---------------------------------------- | ------------------------------------------------------------- |
+| `id`                 | `VARCHAR(64)`  | `PRIMARY KEY`                            | Unique target identifier (e.g. `target-provider-a-alpha-us`)  |
+| `model_version_id`   | `UUID`         | `NOT NULL REFERENCES model_versions(id)` | Associated model version                                      |
+| `provider`           | `VARCHAR(32)`  | `NOT NULL`                               | Upstream provider (`test-provider`, `openai`, `google`, etc.) |
+| `upstream_model_id`  | `VARCHAR(128)` | `NOT NULL`                               | Vendor model string (internal only)                           |
+| `priority`           | `INT`          | `NOT NULL DEFAULT 1`                     | Failover order (1 = primary, 2 = secondary, etc.)             |
+| `weight`             | `INT`          | `NOT NULL DEFAULT 100`                   | Traffic weight for identical priority targets                 |
+| `region`             | `VARCHAR(32)`  | `NULL`                                   | Deployment region identifier                                  |
+| `adapter_options`    | `JSONB`        | `NULL`                                   | Non-secret adapter tuning parameters                          |
+| `supports_streaming` | `BOOLEAN`      | `NOT NULL DEFAULT TRUE`                  | Server-Sent Events capability                                 |
+| `status`             | `VARCHAR(24)`  | `NOT NULL DEFAULT 'available'`           | Target operational health status                              |
+| `max_concurrency`    | `INT`          | `NULL`                                   | Concurrency ceiling                                           |
+| `created_at`         | `TIMESTAMPTZ`  | `NOT NULL DEFAULT NOW()`                 | Creation timestamp                                            |
+| `updated_at`         | `TIMESTAMPTZ`  | `NOT NULL DEFAULT NOW()`                 | Update timestamp                                              |
 
 #### 4. Table `routing_policies`
 
@@ -344,7 +344,7 @@ When the AI Orchestrator requests model resolution, the Model Registry executes 
 6. **Eligible Target Selection**:
    - Selects all `model_targets` linked to the resolved version where `status = 'available'` (or `'degraded'` if allowed by policy).
    - Targets in `maintenance` (cordoned) or `deprecated` are strictly excluded.
-   - Transparent Provider Replacement: Outages or maintenance cordoning of a primary target (e.g. Anthropic direct) allow seamless failover to secondary targets (e.g. AWS Bedrock) without changing the user's selected canonical model.
+   - Transparent Provider Replacement: Outages or maintenance cordoning of a primary target (e.g. upstream provider direct) allow seamless failover to secondary targets (e.g. AWS Bedrock) without changing the user's selected canonical model.
    - If zero eligible targets remain, returns `503 NO_ELIGIBLE_TARGETS`.
    - Targets are deterministically ordered by ascending `priority`, then descending `weight`, then target ID.
 7. **Policy & Pricing Attachment**: Attaches the associated `RoutingPolicyConfig`, `ModelLimits`, `ModelPricing`, and effective `effort` to the payload.
@@ -363,7 +363,7 @@ All endpoints are strictly internal, authenticated service endpoints. The Model 
 - **Purpose**: Dynamic model catalog discovery for BILLY and client model selectors. Returns user-facing model options without exposing internal provider targets, weights, or secrets.
 - **Query Parameters**:
   - `selectableOnly` (optional, boolean, default `true`): If `true`, returns only models whose active version is in `available` status.
-  - `family` (optional, string): Filters catalog entries by model family (e.g. `?family=claude` or `?family=gpt`).
+  - `family` (optional, string): Filters catalog entries by model family (e.g. `?family=catalog-alpha` or `?family=gpt`).
 - **Success Response**: `200 OK` with `Array<ModelCatalogEntry>`.
 - **Response Entry Shape**:
   ```typescript
@@ -432,7 +432,7 @@ All mutation endpoints require write authorization (`ai-platform-admin`) and man
 
 ## 7. Security, Authorization & Service Identity
 
-1. **Zero Provider Secrets**: The Model Registry database and application memory contain zero upstream provider secrets (no Anthropic, OpenAI, or Google keys).
+1. **Zero Provider Secrets**: The Model Registry database and application memory contain zero upstream provider secrets (no upstream provider, OpenAI, or Google keys).
 2. **mTLS / Service Mesh Identity**: Inbound connections require mutual TLS (mTLS) with cryptographically verified service identities.
 3. **Role-Based Service Authorization (RBAC)**:
    - **`ai-orchestrator`**: Granted `models:read`, `catalog:read`, and `models:resolve` only.
@@ -519,7 +519,7 @@ Audit entries are append-only; update and delete operations on the audit table a
 
 ### 11.1 Input Validation Rules
 
-- `canonicalModelId`: Must match regex `^[a-z0-9][a-z0-9._-]{1,63}$` (supporting both modern model IDs like `claude-sonnet`, `gpt-4o` and namespaced IDs like `oicunt.model.general`).
+- `canonicalModelId`: Must match `^oicunt\.model\.[a-z0-9][a-z0-9._-]{0,47}$`.
 - `version`: Must match SemVer format `^v?[0-9]+\.[0-9]+\.[0-9]+$`.
 - `effort`: When specified, must be one of `capabilities.supportedEffortLevels` defined on the model version.
 - `targetWeights`: Target weights for targets sharing the same priority must sum to a positive integer (typically `100`).

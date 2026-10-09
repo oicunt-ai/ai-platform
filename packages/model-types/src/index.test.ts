@@ -23,10 +23,10 @@ describe('@oicunt-ai/model-types', () => {
 
   it('type checks ModelCatalogEntry contract structure', () => {
     const entry: ModelCatalogEntry = {
-      id: 'claude-sonnet',
-      displayName: 'Claude Sonnet',
+      id: 'oicunt.model.catalog-alpha',
+      displayName: 'Catalog Model Alpha',
       description: 'Frontier reasoning and coding model',
-      family: 'claude',
+      family: 'catalog-alpha',
       activeVersion: 'v1.0.0',
       modalities: ['text', 'image'],
       capabilities: {
@@ -52,7 +52,7 @@ describe('@oicunt-ai/model-types', () => {
       status: 'available',
       isSelectable: true,
     };
-    expect(entry.id).toBe('claude-sonnet');
+    expect(entry.id).toBe('oicunt.model.catalog-alpha');
     expect(entry.capabilities.reasoning).toBe(true);
     expect(entry.capabilities.defaultEffortLevel).toBe('medium');
     expect(entry.isSelectable).toBe(true);

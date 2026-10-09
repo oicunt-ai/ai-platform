@@ -40,7 +40,7 @@ It provides deterministic resolution of public **Canonical Model Identifiers** (
                                                            ▼
                                           ┌──────────────────────────────────┐
                                           │   Upstream LLM Model Providers   │
-                                          │ Anthropic • OpenAI • Google • AWS│
+                                          │ Configured upstream providers   │
                                           └──────────────────────────────────┘
 ```
 
@@ -50,13 +50,13 @@ It provides deterministic resolution of public **Canonical Model Identifiers** (
    - The **Model Registry** decides **WHAT** model targets are eligible.
    - The **Model Gateway** decides **HOW** execution happens against eligible targets.
 2. **Zero Provider SDKs & Credentials**:
-   - The Model Registry **never** imports vendor SDKs (`@anthropic-ai/sdk`, `openai`, `@google/genai`).
+   - The Model Registry **never** imports vendor SDKs (`a vendor SDK`, `openai`, `@google/genai`).
    - The Model Registry **never** stores or reads provider API keys or credentials (credentials reside strictly within Model Gateway provider adapters).
    - The Model Registry **never** initiates outbound network calls to external LLM providers.
 3. **Internal Upstream Identifiers**:
-   - Upstream vendor model names (e.g. `claude-3-5-sonnet-20241022`, `gpt-4o-2024-08-06`) are strictly internal target data and are never exposed to public or client-facing applications.
+   - Upstream vendor model names (e.g. `provider-model-alpha-v1`, `provider-model-beta-2024-08-06`) are strictly internal target data and are never exposed to public or client-facing applications.
 4. **Canonical Model IDs as Public Abstraction**:
-   - Public and service-to-service interfaces only surface canonical identifiers (`oicunt.model.general`, `oicunt.model.reasoning`, `oicunt.model.coding`, etc.).
+   - Public and service-to-service interfaces only surface canonical identifiers (`oicunt.model.catalog-alpha`, `oicunt.model.catalog-gamma`, `oicunt.model.catalog-delta`, etc.).
 5. **Exclusive Database Ownership**:
    - The Model Registry owns its dedicated PostgreSQL database schema (`model_registry`). No shared databases or tables with Model Gateway or other services.
 6. **Published Version Immutability**:
@@ -136,7 +136,7 @@ src/
 
 `GET /internal/v1/models/resolve/:canonicalModelId` executes this deterministic 8-step pipeline:
 
-1. **Request Validation**: Verifies pattern `/^[a-z0-9][a-z0-9._-]{1,63}$/` (supports `claude-sonnet`, `gpt-4o`, `oicunt.model.general`), extracts `X-Correlation-ID`, and parses optional `effort`.
+1. **Request Validation**: Requires an OICUNT-owned ID matching `/^oicunt\.model\.[a-z0-9][a-z0-9._-]{0,47}$/`, extracts `X-Correlation-ID`, and parses optional `effort`.
 2. **Canonical Model Lookup**: Queries `canonical_models`. If missing, terminates with `404 MODEL_NOT_FOUND`.
 3. **Version & Alias Resolution**:
    - Resolves explicit version (`?version=v1.0.0`), tenant-specific alias override, global alias (`latest`), or defaults to `active_version`.

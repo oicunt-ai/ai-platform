@@ -25,8 +25,16 @@ export class GetModelCatalogUseCase {
         throw new VersionNotFoundError(model.id, model.activeVersion);
       }
 
+      const hasEligibleTarget = model
+        .getTargets()
+        .some(
+          (target) =>
+            target.modelVersionId === activeVersion.id &&
+            (target.status === 'available' || target.status === 'degraded'),
+        );
       const isSelectable =
-        activeVersion.status === 'available' || activeVersion.status === 'degraded';
+        hasEligibleTarget &&
+        (activeVersion.status === 'available' || activeVersion.status === 'degraded');
 
       if (selectableOnly && !isSelectable) {
         continue;

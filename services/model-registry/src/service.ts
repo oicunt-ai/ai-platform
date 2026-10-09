@@ -26,7 +26,6 @@ import {
 import { ResolutionController } from './interfaces/http/controllers/resolution.controller.js';
 import { CatalogController } from './interfaces/http/controllers/catalog.controller.js';
 import { createHttpRouter } from './interfaces/http/router.js';
-import { registerRealModel } from './domain/real-model.js';
 
 export interface ModelRegistryDependencies {
   readonly config?: ModelRegistryConfig | undefined;
@@ -188,10 +187,6 @@ export class ModelRegistryService {
       void router(req, res);
     });
 
-    if (this.config.environment !== 'test' || this.config.autoSeedRealModel) {
-      await registerRealModel(this.modelRepository);
-    }
-
     this.ready = true;
   }
 
@@ -230,12 +225,14 @@ export class ModelRegistryService {
       return;
     }
 
+    const server = this.server;
+
     return new Promise((resolve, reject) => {
       const timeout = setTimeout(() => {
         resolve();
       }, this.config.shutdownTimeoutMs);
 
-      this.server?.close(async (err) => {
+      server.close(async (err) => {
         clearTimeout(timeout);
         this.server = null;
         if (this.dbPool) {
@@ -251,6 +248,8 @@ export class ModelRegistryService {
           resolve();
         }
       });
+      server.closeIdleConnections();
+      server.closeAllConnections();
     });
   }
 }

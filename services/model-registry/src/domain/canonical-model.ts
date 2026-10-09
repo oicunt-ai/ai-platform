@@ -26,7 +26,7 @@ export interface CreateCanonicalModelParams {
   readonly updatedAt?: string | undefined;
 }
 
-const CANONICAL_MODEL_ID_REGEX = /^[a-z0-9][a-z0-9._-]{1,63}$/;
+export const CANONICAL_MODEL_ID_REGEX = /^oicunt\.model\.[a-z0-9][a-z0-9._-]{0,47}$/;
 
 export class CanonicalModel {
   public readonly id: CanonicalModelId;
@@ -358,7 +358,7 @@ export class CanonicalModel {
   private validateCanonicalModelId(id: string): void {
     if (!id || typeof id !== 'string' || !CANONICAL_MODEL_ID_REGEX.test(id)) {
       throw new ModelValidationError(
-        `Invalid canonical model ID '${id}'. Must match pattern '^[a-z0-9][a-z0-9._-]{1,63}$' (e.g. 'claude-sonnet', 'gpt-4o', 'gemini-pro')`,
+        `Invalid canonical model ID '${id}'. Expected an OICUNT catalog ID such as 'oicunt.model.catalog-model'`,
         'id',
       );
     }

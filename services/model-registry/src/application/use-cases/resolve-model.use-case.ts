@@ -11,9 +11,8 @@ import {
   ModelNotFoundError,
   ModelValidationError,
   UnsupportedEffortError,
+  CANONICAL_MODEL_ID_REGEX,
 } from '../../domain/index.js';
-
-const CANONICAL_MODEL_ID_REGEX = /^[a-z0-9][a-z0-9._-]{1,63}$/;
 
 export interface ResolveModelUseCaseOptions {
   readonly defaultCacheTtlSeconds?: number | undefined;
@@ -40,7 +39,7 @@ export class ResolveModelUseCase {
       !CANONICAL_MODEL_ID_REGEX.test(request.canonicalModelId)
     ) {
       throw new ModelValidationError(
-        `Invalid canonical model ID '${request.canonicalModelId}'. Must match format '^[a-z0-9][a-z0-9._-]{1,63}$' (e.g. 'claude-sonnet', 'gpt-4o', 'gemini-pro')`,
+        `Invalid canonical model ID '${request.canonicalModelId}'. Expected an OICUNT catalog ID such as 'oicunt.model.catalog-model'`,
         'canonicalModelId',
       );
     }

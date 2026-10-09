@@ -111,7 +111,7 @@ describe('HTTP Catalog API Integration & Authorization', () => {
         'x-service-name': 'ai-platform-admin',
       },
       body: JSON.stringify({
-        id: 'oicunt.model.general',
+        id: 'oicunt.model.catalog-alpha',
         displayName: 'General',
         description: 'Desc',
         activeVersion: 'v1.0.0',
@@ -134,7 +134,7 @@ describe('HTTP Catalog API Integration & Authorization', () => {
         'x-change-reason': 'Adding general model',
       },
       body: JSON.stringify({
-        id: 'oicunt.model.general',
+        id: 'oicunt.model.catalog-alpha',
         displayName: 'General Intelligence',
         description: 'Conversational model',
         activeVersion: 'v1.0.0',
@@ -143,7 +143,7 @@ describe('HTTP Catalog API Integration & Authorization', () => {
 
     expect(res.status).toBe(201);
     const json = (await res.json()) as { data: { id: string } };
-    expect(json.data.id).toBe('oicunt.model.general');
+    expect(json.data.id).toBe('oicunt.model.catalog-alpha');
 
     const listRes = await fetch(`http://127.0.0.1:${port}/internal/v1/models`, {
       headers: {
@@ -153,12 +153,12 @@ describe('HTTP Catalog API Integration & Authorization', () => {
     expect(listRes.status).toBe(200);
     const listJson = (await listRes.json()) as { data: Array<{ id: string }> };
     expect(listJson.data).toHaveLength(1);
-    expect(listJson.data[0]?.id).toBe('oicunt.model.general');
+    expect(listJson.data[0]?.id).toBe('oicunt.model.catalog-alpha');
   });
 
   it('publishes model version via POST /internal/v1/models/:id/versions', async () => {
     const res = await fetch(
-      `http://127.0.0.1:${port}/internal/v1/models/oicunt.model.general/versions`,
+      `http://127.0.0.1:${port}/internal/v1/models/oicunt.model.catalog-alpha/versions`,
       {
         method: 'POST',
         headers: {
@@ -193,7 +193,7 @@ describe('HTTP Catalog API Integration & Authorization', () => {
 
   it('enforces mandatory X-Change-Reason on status mutations', async () => {
     const res = await fetch(
-      `http://127.0.0.1:${port}/internal/v1/models/oicunt.model.general/versions/v1.0.0/status`,
+      `http://127.0.0.1:${port}/internal/v1/models/oicunt.model.catalog-alpha/versions/v1.0.0/status`,
       {
         method: 'PUT',
         headers: {
@@ -215,12 +215,12 @@ describe('HTTP Catalog API Integration & Authorization', () => {
   });
 
   it('creates model target and updates target status with change reason', async () => {
-    const model = (await modelRepo.findById('oicunt.model.general'))!;
+    const model = (await modelRepo.findById('oicunt.model.catalog-alpha'))!;
     const versionId = model.getVersion('v1.0.0')!.id;
 
     // Create target
     const createRes = await fetch(
-      `http://127.0.0.1:${port}/internal/v1/models/oicunt.model.general/targets`,
+      `http://127.0.0.1:${port}/internal/v1/models/oicunt.model.catalog-alpha/targets`,
       {
         method: 'POST',
         headers: {
@@ -229,10 +229,10 @@ describe('HTTP Catalog API Integration & Authorization', () => {
           'x-actor-id': 'admin-tester',
         },
         body: JSON.stringify({
-          id: 'target-anthropic-1',
+          id: 'target-provider-a-1',
           modelVersionId: versionId,
-          provider: 'anthropic',
-          upstreamModelId: 'claude-3-5-sonnet',
+          provider: 'test-provider',
+          upstreamModelId: 'provider-model-alpha',
           priority: 1,
           weight: 100,
         }),
@@ -243,7 +243,7 @@ describe('HTTP Catalog API Integration & Authorization', () => {
 
     // Update target status (cordoning) with required X-Change-Reason
     const updateRes = await fetch(
-      `http://127.0.0.1:${port}/internal/v1/models/oicunt.model.general/targets/target-anthropic-1/status`,
+      `http://127.0.0.1:${port}/internal/v1/models/oicunt.model.catalog-alpha/targets/target-provider-a-1/status`,
       {
         method: 'PUT',
         headers: {
@@ -265,7 +265,7 @@ describe('HTTP Catalog API Integration & Authorization', () => {
 
   it('updates routing policy via PUT /internal/v1/models/:id/routing-policy', async () => {
     const res = await fetch(
-      `http://127.0.0.1:${port}/internal/v1/models/oicunt.model.general/routing-policy`,
+      `http://127.0.0.1:${port}/internal/v1/models/oicunt.model.catalog-alpha/routing-policy`,
       {
         method: 'PUT',
         headers: {
@@ -291,7 +291,7 @@ describe('HTTP Catalog API Integration & Authorization', () => {
 
   it('sets alias via PUT /internal/v1/models/:id/aliases', async () => {
     const res = await fetch(
-      `http://127.0.0.1:${port}/internal/v1/models/oicunt.model.general/aliases`,
+      `http://127.0.0.1:${port}/internal/v1/models/oicunt.model.catalog-alpha/aliases`,
       {
         method: 'PUT',
         headers: {
@@ -315,11 +315,14 @@ describe('HTTP Catalog API Integration & Authorization', () => {
   });
 
   it('GET /internal/v1/models/:id retrieves full canonical model detail', async () => {
-    const res = await fetch(`http://127.0.0.1:${port}/internal/v1/models/oicunt.model.general`, {
-      headers: {
-        'x-service-name': 'ai-orchestrator',
+    const res = await fetch(
+      `http://127.0.0.1:${port}/internal/v1/models/oicunt.model.catalog-alpha`,
+      {
+        headers: {
+          'x-service-name': 'ai-orchestrator',
+        },
       },
-    });
+    );
     expect(res.status).toBe(200);
     const json = (await res.json()) as {
       data: {
@@ -329,7 +332,7 @@ describe('HTTP Catalog API Integration & Authorization', () => {
         aliases: unknown[];
       };
     };
-    expect(json.data.id).toBe('oicunt.model.general');
+    expect(json.data.id).toBe('oicunt.model.catalog-alpha');
     expect(json.data.versions).toHaveLength(1);
     expect(json.data.targets).toHaveLength(1);
     expect(json.data.aliases).toHaveLength(1);
@@ -346,7 +349,7 @@ describe('HTTP Catalog API Integration & Authorization', () => {
         'x-actor-id': 'admin-tester',
       },
       body: JSON.stringify({
-        id: 'oicunt.model.general',
+        id: 'oicunt.model.catalog-alpha',
         displayName: hugeString,
         description: 'Huge payload',
         activeVersion: 'v1.0.0',
@@ -464,7 +467,7 @@ describe('HTTP Catalog API Integration & Authorization', () => {
 
     try {
       const res = await fetch(
-        `http://127.0.0.1:${brokenPort}/internal/v1/models/oicunt.model.general`,
+        `http://127.0.0.1:${brokenPort}/internal/v1/models/oicunt.model.catalog-alpha`,
         {
           headers: {
             'x-service-name': 'ai-orchestrator',

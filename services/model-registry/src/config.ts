@@ -32,7 +32,6 @@ export interface ModelRegistryConfig {
   readonly allowedServiceIdentities: readonly string[];
   readonly internalAuthToken?: string | undefined;
   readonly maxBodySizeBytes: number;
-  readonly autoSeedRealModel?: boolean | undefined;
 }
 
 export function resolveEnvironment(raw?: string): Environment {
@@ -109,16 +108,31 @@ export function loadModelRegistryConfig(
     database: Object.freeze(dbConfig),
     cache: Object.freeze(cacheConfig),
     allowedServiceIdentities: Object.freeze(allowedServiceIdentities),
-    internalAuthToken: overrides?.internalAuthToken ?? process.env['INTERNAL_AUTH_TOKEN'],
+    internalAuthToken:
+      overrides?.internalAuthToken ??
+      process.env['MODEL_REGISTRY_INTERNAL_TOKEN'] ??
+      process.env['INTERNAL_AUTH_TOKEN'],
     maxBodySizeBytes:
       overrides?.maxBodySizeBytes ??
       Number.parseInt(process.env['MAX_BODY_SIZE_BYTES'] ?? '1048576', 10),
-    autoSeedRealModel:
-      overrides?.autoSeedRealModel ?? process.env['AUTO_SEED_REAL_MODEL'] === 'true',
   };
 
   if (config.port < 0 || config.port > 65535) {
     throw new Error(`Invalid port configuration: ${config.port}`);
+  }
+
+  if (env === 'production') {
+    const missing = [
+      ['MODEL_REGISTRY_INTERNAL_TOKEN', config.internalAuthToken],
+      ['DATABASE_HOST', config.database.host],
+      ['DATABASE_USER', config.database.user],
+      ['DATABASE_PASSWORD', config.database.password],
+    ].filter(([, value]) => !value || value.trim().length === 0);
+    if (missing.length > 0) {
+      throw new Error(
+        `Model Registry production configuration is incomplete: ${missing.map(([name]) => name).join(', ')}`,
+      );
+    }
   }
 
   return Object.freeze(config);

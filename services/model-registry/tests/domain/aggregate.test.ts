@@ -11,7 +11,7 @@ import {
 describe('CanonicalModel Aggregate Root', () => {
   const createTestModel = () => {
     const model = new CanonicalModel({
-      id: 'oicunt.model.general',
+      id: 'oicunt.model.catalog-alpha',
       displayName: 'General Intelligence',
       description: 'Flagship conversational intelligence model',
       activeVersion: 'v1.0.0',
@@ -45,7 +45,7 @@ describe('CanonicalModel Aggregate Root', () => {
     return { model, v1 };
   };
 
-  it('enforces canonical model ID pattern ^[a-z0-9][a-z0-9._-]{1,63}$', () => {
+  it('enforces the OICUNT-owned catalog model ID namespace', () => {
     expect(
       () =>
         new CanonicalModel({
@@ -67,39 +67,49 @@ describe('CanonicalModel Aggregate Root', () => {
     ).toThrowError(ModelValidationError);
 
     // Valid user-facing models:
-    const sonnet = new CanonicalModel({
-      id: 'claude-sonnet',
-      displayName: 'Claude Sonnet',
+    const alpha = new CanonicalModel({
+      id: 'oicunt.model.catalog-alpha',
+      displayName: 'Catalog Model Alpha',
       description: 'Frontier reasoning model',
-      family: 'anthropic',
+      family: 'test-provider',
       activeVersion: 'v1.0.0',
     });
-    expect(sonnet.id).toBe('claude-sonnet');
-    expect(sonnet.family).toBe('anthropic');
+    expect(alpha.id).toBe('oicunt.model.catalog-alpha');
+    expect(alpha.family).toBe('test-provider');
 
     const gpt = new CanonicalModel({
-      id: 'gpt-4o',
-      displayName: 'GPT-4o',
+      id: 'oicunt.model.catalog-beta',
+      displayName: 'Catalog Model Beta',
       description: 'Omni model',
       family: 'openai',
       activeVersion: 'v1.0.0',
     });
-    expect(gpt.id).toBe('gpt-4o');
+    expect(gpt.id).toBe('oicunt.model.catalog-beta');
 
     const legacy = new CanonicalModel({
-      id: 'oicunt.model.coding-expert',
+      id: 'oicunt.model.catalog-delta-expert',
       displayName: 'Coding Expert',
       description: 'Expert coding model',
       activeVersion: 'v1.0.0',
     });
-    expect(legacy.id).toBe('oicunt.model.coding-expert');
+    expect(legacy.id).toBe('oicunt.model.catalog-delta-expert');
+
+    expect(
+      () =>
+        new CanonicalModel({
+          id: 'provider-model-beta' as unknown as CanonicalModelId,
+          displayName: 'Leaked upstream ID',
+          description: 'Must not be accepted as an OICUNT catalog ID',
+          activeVersion: 'v1.0.0',
+        }),
+    ).toThrowError(ModelValidationError);
   });
 
   it('rejects empty display name or description', () => {
     expect(
       () =>
         new CanonicalModel({
-          id: 'oicunt.model.general',
+          id: 'oicunt.model.catalog-alpha',
           displayName: '  ',
           description: 'Desc',
           activeVersion: 'v1.0.0',
@@ -109,7 +119,7 @@ describe('CanonicalModel Aggregate Root', () => {
     expect(
       () =>
         new CanonicalModel({
-          id: 'oicunt.model.general',
+          id: 'oicunt.model.catalog-alpha',
           displayName: 'General',
           description: '',
           activeVersion: 'v1.0.0',
@@ -127,8 +137,8 @@ describe('CanonicalModel Aggregate Root', () => {
     const orphanTarget = new ModelTarget({
       id: 'target-1',
       modelVersionId: 'non-existent-version-uuid',
-      provider: 'anthropic',
-      upstreamModelId: 'claude-3-5-sonnet',
+      provider: 'test-provider',
+      upstreamModelId: 'provider-model-alpha',
     });
 
     expect(() => model.addTarget(orphanTarget)).toThrowError(ModelValidationError);
