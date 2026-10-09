@@ -8,7 +8,7 @@
 
 ## 1. Executive Summary & System Context
 
-The **Model Gateway** (`services/model-gateway`) is the singular, authoritative **data-plane execution boundary** for all AI model inference across the **OICUNT AI Platform**. It serves as the sole egress point to upstream AI model providers (such as Anthropic, OpenAI, Google Gemini, AWS Bedrock, Azure OpenAI, and future self-hosted OICUNT inference clusters).
+The **Model Gateway** (`services/model-gateway`) is the singular, authoritative **data-plane execution boundary** for all AI model inference across the **OICUNT AI Platform**. It is the sole egress point to configured upstream providers and future self-hosted OICUNT inference clusters.
 
 The Model Gateway guarantees that neither client applications (BILLY) nor middle-tier service orchestrators (AI Orchestrator; see [AI Orchestrator Contract](./ai-orchestrator.md)) ever communicate directly with external model providers, hold provider credentials, or couple their business logic to vendor-specific SDKs, wire protocols, or error schemas.
 
@@ -57,7 +57,7 @@ The Model Gateway guarantees that neither client applications (BILLY) nor middle
                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │                     Upstream Model Providers                           │
-│        Anthropic • OpenAI • Google Gemini • AWS Bedrock • vLLM         │
+│                  Configured Upstream Providers                         │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -88,11 +88,11 @@ sequenceDiagram
     participant Adapter as Provider Adapter
     participant Upstream as Upstream Model Provider
 
-    User->>BILLY: Submits Prompt (Model: 'claude-sonnet', Effort: 'high')
+    User->>BILLY: Submits Prompt (Model: 'oicunt.model.catalog-alpha', Effort: 'high')
     BILLY->>APIGW: POST /api/v1/ai/completions
     APIGW->>Orch: POST /internal/v1/orchestrator/chat
     Note over Orch: Resolves model requirements
-    Orch->>Reg: GET /internal/v1/models/resolve/claude-sonnet?effort=high
+    Orch->>Reg: GET /internal/v1/models/resolve/oicunt.model.catalog-alpha?effort=high
     Note over Reg: Validates capabilities & effort<br/>Retrieves active targets & routing policy
     Reg-->>Orch: 200 OK (ModelResolutionResponse)
     Note over Orch: Assembles InferenceExecutionRequest
@@ -253,7 +253,7 @@ export interface GatewayDispatchPayload {
   /** Multi-turn conversational session identifier (if applicable) */
   readonly conversationId?: string | undefined;
 
-  /** The user-selected canonical model identity (e.g. 'claude-sonnet', 'gpt-4o') */
+  /** The user-selected OICUNT catalog model identity (e.g. 'oicunt.model.catalog-alpha') */
   readonly canonicalModelId: CanonicalModelId;
 
   /** The resolved semantic model version (e.g. 'v1.0.0') */
@@ -317,7 +317,7 @@ export interface GatewayToolDefinition {
 export interface ResolvedTargetDto {
   readonly targetId: string;
   readonly provider:
-    'anthropic' | 'openai' | 'google' | 'bedrock' | 'azure-openai' | 'local' | 'custom';
+    'test-provider' | 'openai' | 'google' | 'bedrock' | 'azure-openai' | 'local' | 'custom';
   readonly upstreamModelId: string;
   readonly priority: number;
   readonly weight: number;
@@ -348,13 +348,13 @@ The Model Gateway consumes the resolution output produced by the Model Registry 
 ┌────────────────────────────────────────────────────────┐
 │             Model Registry Resolution Output           │
 │                                                        │
-│  canonicalModelId: 'claude-sonnet'                     │
+│  canonicalModelId: 'oicunt.model.catalog-alpha'                     │
 │  version: 'v1.0.0'                                     │
 │  effort: 'high'                                        │
 │  limits: { contextWindowTokens: 200000, maxOutput: 8192}│
 │  routingPolicy: { strategy: 'priority-fallback', ... } │
 │  eligibleTargets: [                                    │
-│    { targetId: 'target-1', provider: 'anthropic', ... }│
+│    { targetId: 'target-1', provider: 'test-provider', ... }│
 │    { targetId: 'target-2', provider: 'bedrock', ... }  │
 │  ]                                                     │
 └───────────────────────────┬────────────────────────────┘
@@ -397,7 +397,7 @@ Provider Adapters are strictly isolated anti-corruption layers residing behind t
          ┌──────────────────────────┼──────────────────────────┐
          ▼                          ▼                          ▼
 ┌───────────────────┐      ┌───────────────────┐      ┌───────────────────┐
-│ AnthropicAdapter  │      │   OpenAIAdapter   │      │   GoogleAdapter   │
+│ ProviderAdapter A  │      │ ProviderAdapter B │      │ ProviderAdapter N │
 │ • Uses API Key    │      │ • Uses API Key    │      │ • Uses ADC/OAuth  │
 │ • Messages API    │      │ • ChatCompletions │      │ • Gemini API      │
 │ • thinking budget │      │ • reasoning_effort│      │ • thinking_config │
@@ -463,7 +463,7 @@ export interface IProviderAdapter {
 
 ### 5.2 Adapter Invariants
 
-1. **Zero Vendor Leakage**: Adapter code must never return raw vendor response types (e.g., `Anthropic.Message`, `OpenAI.ChatCompletion`) or throw raw vendor exceptions. All return types must strictly adhere to `@oicunt-ai/ai-types`.
+1. **Zero Vendor Leakage**: Adapter code must never return raw vendor response types (e.g., `upstream provider.Message`, `OpenAI.ChatCompletion`) or throw raw vendor exceptions. All return types must strictly adhere to `@oicunt-ai/ai-types`.
 2. **Credential Encapsulation**: Vendor SDK client instances must be initialized strictly within the adapter boundary using credentials supplied from the Gateway runtime environment.
 3. **Stateless Operations**: Adapters must be stateless. They must not retain conversational turns, prompt caches, or execution state across invocations.
 4. **Cancellation Propagation**: When `cancellationSignal` fires, the adapter must immediately abort the underlying HTTP request or terminate the vendor SDK stream.
@@ -476,7 +476,7 @@ In the OICUNT AI Platform, reasoning effort is a **first-class normalized parame
 
 ### 6.1 Vendor Mapping Matrix
 
-| OICUNT Normalized Effort | Anthropic Adapter (`thinking`)              | OpenAI Adapter (`reasoning_effort`) | Google Gemini Adapter (`thinking_config`) | AWS Bedrock (Claude)                        |
+| OICUNT Normalized Effort | upstream provider Adapter (`thinking`)      | OpenAI Adapter (`reasoning_effort`) | Google Gemini Adapter (`thinking_config`) | AWS Bedrock (catalog model)                 |
 | ------------------------ | ------------------------------------------- | ----------------------------------- | ----------------------------------------- | ------------------------------------------- |
 | `undefined` / `none`     | `{ type: "disabled" }`                      | Omitted / `null`                    | `{ thinking_budget: 0 }`                  | `{ type: "disabled" }`                      |
 | `'low'`                  | `{ type: "enabled", budget_tokens: 2048 }`  | `reasoning_effort: "low"`           | `{ thinking_budget: 2048 }`               | `{ type: "enabled", budget_tokens: 2048 }`  |
@@ -530,7 +530,7 @@ Streaming completions use an asynchronous event stream conforming to the `Stream
 
 ### 7.2 Reasoning / Thinking Privacy & Event Gating Boundary
 
-When executing models with extended reasoning enabled (`effort` set to `'low'`, `'medium'`, or `'high'`), upstream provider APIs (e.g. Anthropic thinking blocks, OpenAI reasoning tokens, Gemini thoughts) return raw internal chain-of-thought data to the Provider Adapter.
+When executing models with extended reasoning enabled (`effort` set to `'low'`, `'medium'`, or `'high'`), upstream provider APIs (e.g. upstream provider thinking blocks, OpenAI reasoning tokens, Gemini thoughts) return raw internal chain-of-thought data to the Provider Adapter.
 
 The Model Gateway establishes a strict **privacy boundary**:
 
@@ -617,15 +617,15 @@ When a primary provider target fails or exhausts its retry budget, the Model Gat
 
 ```
 ┌────────────────────────────────────────────────────────┐
-│ User Selected: 'claude-sonnet'                         │
+│ User Selected: 'oicunt.model.catalog-alpha'                         │
 │ Model Registry Eligible Targets:                       │
-│   Target 1 (Priority 1): anthropic / direct            │
+│   Target 1 (Priority 1): provider-a / direct            │
 │   Target 2 (Priority 2): bedrock / us-east-1           │
 └───────────────────────────┬────────────────────────────┘
                             │
                             ▼
                ┌─────────────────────────┐
-               │ Try Target 1 (Anthropic)│
+               │ Try Target 1 (upstream provider)│
                └────────────┬────────────┘
                             │
                    503 Model Unavailable
@@ -641,7 +641,7 @@ When a primary provider target fails or exhausts its retry budget, the Model Gat
                             │
                             ▼
 ┌────────────────────────────────────────────────────────┐
-│ Completion Returned: 'claude-sonnet'                   │
+│ Completion Returned: 'oicunt.model.catalog-alpha'                   │
 │ • Client observes success without disruption           │
 │ • Canonical model identity never changes               │
 │ • Telemetry records fallback event for operations      │
@@ -650,8 +650,8 @@ When a primary provider target fails or exhausts its retry budget, the Model Gat
 
 ### 9.1 Failover Invariants
 
-1. **Model Identity Invariance**: Failover **never** changes the user-selected canonical model identity. If the user selected `claude-sonnet`, the output is guaranteed to be generated by a target authorized for `claude-sonnet`.
-2. **Prohibition of Unrelated Model Swapping**: The Gateway must **never** silently substitute an unrelated model (e.g., swapping `claude-sonnet` with `gpt-4o` or `gemini-flash`) unless the Model Registry explicitly configured such a degradation rule in the active routing policy.
+1. **Model Identity Invariance**: Failover **never** changes the user-selected canonical model identity. If the user selected `oicunt.model.catalog-alpha`, the output is guaranteed to be generated by a target authorized for `oicunt.model.catalog-alpha`.
+2. **Prohibition of Unrelated Model Swapping**: The Gateway must **never** silently substitute an unrelated model (e.g., swapping `oicunt.model.catalog-alpha` with `provider-model-beta` or `provider-model-gamma-fast`) unless the Model Registry explicitly configured such a degradation rule in the active routing policy.
 3. **Exhaustion Behavior**: If all eligible targets fail, the Gateway returns `503 MODEL_UNAVAILABLE` with an error message indicating that all available execution targets are currently offline.
 
 ---
@@ -801,7 +801,7 @@ To prevent operational confusion and eliminate security risks, the Model Gateway
    - **Zero Secret / Raw Payload Exposure**:
      - Upstream vendor error bodies, status texts, header dumps, key names, token substrings, and raw responses **must be stripped immediately by the Provider Adapter**.
      - Raw vendor payloads must **never** be passed into `details`, logged in unredacted fields, or exposed to the AI Orchestrator or BILLY.
-   - **Execution Behavior**: The Gateway suppresses that target in its local circuit breaker, logs a sanitized internal alert with the target identifier, and immediately attempts failover to the next eligible target backing the same canonical model (e.g. falling back from Anthropic direct to Bedrock).
+   - **Execution Behavior**: The Gateway suppresses that target in its local circuit breaker, logs a sanitized internal alert with the target identifier, and immediately attempts failover to the next eligible target backing the same canonical model (e.g. falling back from upstream provider direct to Bedrock).
    - **Caller Contract**: If all fallback targets are exhausted, the caller receives a normalized `PROVIDER_AUTHENTICATION_ERROR` with a generic, sanitized user message (`"Model service configuration error."`). No credential or vendor-specific identifiers leak over the public/internal wire.
 
 2. **Provider Availability Failure (`MODEL_UNAVAILABLE` - HTTP 503 / `INFERENCE_TIMEOUT` - HTTP 504)**:
@@ -868,7 +868,7 @@ The Model Gateway enforces a zero-trust credential isolation perimeter:
 │                                                        │
 │            Model Gateway & Provider Adapters           │
 │                                                        │
-│   • ANTHROPIC_API_KEY      • OPENAI_API_KEY            │
+│   • EXTERNAL_PROVIDER_API_KEY      • OPENAI_API_KEY            │
 │   • GOOGLE_ADC_SECRETS     • AWS_IAM_ROLES             │
 └────────────────────────────────────────────────────────┘
 ```
@@ -917,7 +917,7 @@ $$\text{Total Cost (USD)} = \left(\frac{\text{promptTokens}}{10^6} \times \text{
 The Model Gateway supports seamless addition of new model vendors without requiring modifications to BILLY or the AI Orchestrator:
 
 1. **Vendor Landscape**:
-   - `anthropic`: Anthropic Direct Messages API
+   - provider IDs are open-ended registry values resolved to registered adapters
    - `openai`: OpenAI Chat Completions & Reasoning API
    - `google`: Google Gemini Generative Language API
    - `bedrock`: AWS Bedrock Converse API
@@ -935,15 +935,15 @@ The Model Gateway supports seamless addition of new model vendors without requir
 This scenario illustrates transparent failover during upstream vendor degradation:
 
 ```
-Step 1: User selects 'claude-sonnet' in BILLY with effort 'medium'.
+Step 1: User selects 'oicunt.model.catalog-alpha' in BILLY with effort 'medium'.
 Step 2: AI Orchestrator calls Model Registry resolution (control-plane).
 Step 3: Registry resolves:
-        - Target 1: Anthropic direct (priority 1)
+        - Target 1: primary configured provider (priority 1)
         - Target 2: AWS Bedrock (priority 2)
 Step 4: AI Orchestrator submits InferenceExecutionRequest to Inference Service.
 Step 5: Inference Service validates lifecycle hooks and dispatches GatewayDispatchPayload to Model Gateway.
 Step 6: Model Gateway invokes Target 1.
-        -> Anthropic returns 503 Overloaded.
+        -> The primary provider returns an unavailable response.
 Step 7: Gateway records failure on Target 1 circuit breaker.
 Step 8: Gateway examines routing policy (maxFallbackAttempts: 2).
 Step 9: Gateway executes Target 2 (AWS Bedrock).
@@ -1013,7 +1013,7 @@ The following invariants are binding engineering standards for all current and f
 3. **Model Registry never calls providers.** It has zero network access to upstream model APIs.
 4. **Model Gateway is the sole upstream inference egress boundary.** No other service may initiate connections to vendor LLM endpoints.
 5. **Provider SDKs exist only behind Provider Adapters.** Upstream SDK libraries must never be imported outside `providers/`.
-6. **Provider-specific IDs never become public BILLY contracts.** BILLY operates exclusively with canonical identifiers (`claude-sonnet`, `gpt-4o`).
+6. **Provider-specific IDs never become public BILLY contracts.** BILLY operates exclusively with identifiers in the `oicunt.model.*` namespace.
 7. **Provider-specific formats never escape Adapters.** All input, output, streaming, and error formats must be normalized to platform standards.
 8. **User-selected model identity remains separate from provider target identity.** Failover changes the provider target, never the canonical model.
 9. **Reasoning effort remains an OICUNT-level normalized concept.** It is translated dynamically into vendor parameters by adapters.

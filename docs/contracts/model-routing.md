@@ -31,9 +31,9 @@ The canonical request path flows sequentially across six distinct architectural 
 ┌─────────────────────────┐
 │     Model Registry      │
 └────────────┬────────────┘
-             │ [User selects Model: 'claude-sonnet', Effort: 'high']
+             │ [User selects Model: 'oicunt.model.catalog-alpha', Effort: 'high']
              │
-             │ 1. POST /api/v1/ai/completions (model: 'claude-sonnet', effort: 'high')
+             │ 1. POST /api/v1/ai/completions (model: 'oicunt.model.catalog-alpha', effort: 'high')
              ▼
 ┌─────────────────────────┐
 │  Platform API Gateway   │
@@ -43,7 +43,7 @@ The canonical request path flows sequentially across six distinct architectural 
 ┌─────────────────────────┐
 │     AI Orchestrator     │
 └────────────┬────────────┘
-             │ 3. GET /internal/v1/models/resolve/claude-sonnet?effort=high
+             │ 3. GET /internal/v1/models/resolve/oicunt.model.catalog-alpha?effort=high
              ▼
 ┌─────────────────────────┐
 │     Model Registry      │
@@ -68,7 +68,7 @@ The canonical request path flows sequentially across six distinct architectural 
 ┌─────────────────────────┐
 │    Provider Adapter     │ (Internal to Model Gateway boundary)
 └────────────┬────────────┘
-             │ 8. Upstream Wire Protocol & SDKs (Anthropic, Bedrock, OpenAI, Google)
+             │ 8. Upstream Wire Protocol & SDKs (upstream provider, Bedrock, OpenAI, Google)
              ▼
 ┌─────────────────────────┐
 │ Upstream Model Provider │
@@ -91,11 +91,11 @@ sequenceDiagram
     Note over BILLY,Reg: Dynamic Catalog Discovery
     BILLY->>Reg: GET /internal/v1/catalog (selectableOnly=true)
     Reg-->>BILLY: 200 OK (ModelCatalogEntry[])
-    User->>BILLY: Selects 'Claude Sonnet' & reasoning effort 'high'
-    BILLY->>APIGW: POST /api/v1/ai/completions (model: "claude-sonnet", effort: "high")
+    User->>BILLY: Selects 'Catalog Model Alpha' & reasoning effort 'high'
+    BILLY->>APIGW: POST /api/v1/ai/completions (model: "oicunt.model.catalog-alpha", effort: "high")
     APIGW->>Orch: POST /internal/v1/orchestrator/chat
     Note over Orch: Validates conversation structure & model request
-    Orch->>Reg: GET /internal/v1/models/resolve/claude-sonnet?effort=high
+    Orch->>Reg: GET /internal/v1/models/resolve/oicunt.model.catalog-alpha?effort=high
     Note over Reg: Validates canonical model & effort capability<br/>Determines eligible provider targets<br/>Evaluates routing policy
     Reg-->>Orch: 200 OK (ModelResolutionResponse)
     Orch->>Inf: POST /internal/v1/inference/execute (Prompt/Context + Resolution)
@@ -127,33 +127,33 @@ The separation between Model Registry and Model Gateway enforces a fundamental a
 
 ### Responsibility Separation Matrix
 
-| Capability / Concern                                    |       Model Registry Owns       |       Model Gateway Owns        |
-| ------------------------------------------------------- | :-----------------------------: | :-----------------------------: |
-| **Model Catalog Discovery** (`GET /catalog`)            |   **YES** (Sanitized catalog)   |               NO                |
-| **Canonical Model Identifiers** (`claude-sonnet`, etc.) |   **YES** (Catalog authority)   |            Consumes             |
-| **Reasoning Effort Capability & Validation**            |   **YES** (Validates limits)    |      Translates in adapter      |
-| **Model Metadata, Description & Capabilities**          |             **YES**             |            Consumes             |
-| **Context Window & Output Token Limits**                |             **YES**             |            Enforces             |
-| **Pricing Metadata & Token Cost Tables**                |             **YES**             |   Attaches to usage telemetry   |
-| **Model Availability & Deprecation Status**             | **YES** (Administrative status) |      Evaluates live health      |
-| **Eligible Provider & Model Target Definitions**        | **YES** (Catalog configuration) |       Dispatches against        |
-| **Model Aliases & Version Mapping**                     |             **YES**             |            Consumes             |
-| **Routing Policy Configuration** (Weights, Priorities)  |     **YES** (Defines rules)     |         Executes rules          |
-| **Provider Egress Boundary**                            |               NO                | **YES** (Singular egress point) |
-| **Provider Adapter Selection & Invocation**             |               NO                |             **YES**             |
-| **Normalized Completion Execution**                     |               NO                |             **YES**             |
-| **Provider-Specific API Keys & Credentials**            |               NO                | **YES** (Confined to adapters)  |
-| **Upstream Retries & Exponential Backoff**              |               NO                |             **YES**             |
-| **Call Timeouts & Deadlines**                           |               NO                |             **YES**             |
-| **Circuit Breakers & Active Health Probing**            |               NO                |             **YES**             |
-| **Dynamic Provider Failover & Fallback**                |               NO                |             **YES**             |
-| **Streaming Chunk Normalization (SSE)**                 |               NO                |             **YES**             |
-| **Provider Error & Status Code Normalization**          |               NO                |             **YES**             |
-| **Provider Response Envelope Normalization**            |               NO                |             **YES**             |
+| Capability / Concern                                                 |       Model Registry Owns       |       Model Gateway Owns        |
+| -------------------------------------------------------------------- | :-----------------------------: | :-----------------------------: |
+| **Model Catalog Discovery** (`GET /catalog`)                         |   **YES** (Sanitized catalog)   |               NO                |
+| **Canonical Model Identifiers** (`oicunt.model.catalog-alpha`, etc.) |   **YES** (Catalog authority)   |            Consumes             |
+| **Reasoning Effort Capability & Validation**                         |   **YES** (Validates limits)    |      Translates in adapter      |
+| **Model Metadata, Description & Capabilities**                       |             **YES**             |            Consumes             |
+| **Context Window & Output Token Limits**                             |             **YES**             |            Enforces             |
+| **Pricing Metadata & Token Cost Tables**                             |             **YES**             |   Attaches to usage telemetry   |
+| **Model Availability & Deprecation Status**                          | **YES** (Administrative status) |      Evaluates live health      |
+| **Eligible Provider & Model Target Definitions**                     | **YES** (Catalog configuration) |       Dispatches against        |
+| **Model Aliases & Version Mapping**                                  |             **YES**             |            Consumes             |
+| **Routing Policy Configuration** (Weights, Priorities)               |     **YES** (Defines rules)     |         Executes rules          |
+| **Provider Egress Boundary**                                         |               NO                | **YES** (Singular egress point) |
+| **Provider Adapter Selection & Invocation**                          |               NO                |             **YES**             |
+| **Normalized Completion Execution**                                  |               NO                |             **YES**             |
+| **Provider-Specific API Keys & Credentials**                         |               NO                | **YES** (Confined to adapters)  |
+| **Upstream Retries & Exponential Backoff**                           |               NO                |             **YES**             |
+| **Call Timeouts & Deadlines**                                        |               NO                |             **YES**             |
+| **Circuit Breakers & Active Health Probing**                         |               NO                |             **YES**             |
+| **Dynamic Provider Failover & Fallback**                             |               NO                |             **YES**             |
+| **Streaming Chunk Normalization (SSE)**                              |               NO                |             **YES**             |
+| **Provider Error & Status Code Normalization**                       |               NO                |             **YES**             |
+| **Provider Response Envelope Normalization**                         |               NO                |             **YES**             |
 
 ### Client & Orchestrator Prohibitions
 
-1. **BILLY and AI Orchestrator must NEVER contain provider-specific model IDs** (e.g. `claude-3-5-sonnet-20241022`, `gpt-4o-2024-08-06`).
+1. **BILLY and AI Orchestrator must NEVER contain provider-specific model IDs** (e.g. `provider-model-alpha-v1`, `provider-model-beta-2024-08-06`).
 2. **BILLY and AI Orchestrator must NEVER contain provider SDK logic** or communicate directly with upstream provider endpoints.
 3. **Upstream provider credentials must NEVER leave the Model Gateway / Provider Adapter boundary.**
 4. **AI Orchestrator preserves the user-selected canonical model identity and reasoning effort level** (see [AI Orchestrator Contract](./ai-orchestrator.md)), never performing arbitrary cross-model substitution.
@@ -166,8 +166,8 @@ To prevent architectural ambiguity, the following concepts are strictly delineat
 
 ```
 ┌────────────────────────────────────────────────────────────────────────┐
-│ Canonical Model ID: claude-sonnet (or oicunt.model.general)            │
-│ Family: claude                                                         │
+│ Canonical Model ID: oicunt.model.catalog-alpha (or oicunt.model.catalog-alpha)            │
+│ Family: catalog-alpha                                                         │
 ├────────────────────────────────────────────────────────────────────────┤
 │ Version: v1.0.0 (Active Release)                                       │
 │ Modalities: [text, image]                                              │
@@ -179,12 +179,12 @@ To prevent architectural ambiguity, the following concepts are strictly delineat
 ├────────────────────────────────────────────────────────────────────────┤
 │ Eligible Targets (Multiple Targets for Transparent Failover):          │
 │  ├── Target 1 (Priority 1, Primary):                                   │
-│  │     Provider: anthropic                                             │
-│  │     Upstream Model ID: claude-3-5-sonnet-20241022                   │
+│  │     Provider: provider-a                                             │
+│  │     Upstream Model ID: provider-model-alpha-v1                   │
 │  │     Status: available                                               │
 │  └── Target 2 (Priority 2, Fallback):                                  │
 │        Provider: bedrock                                               │
-│        Upstream Model ID: anthropic.claude-3-5-sonnet-20241022-v2:0    │
+│        Upstream Model ID: provider-b.model-alpha-v1    │
 │        Status: available                                               │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -192,17 +192,17 @@ To prevent architectural ambiguity, the following concepts are strictly delineat
 ### Concept Definitions
 
 1. **`canonicalModelId`**:  
-   The stable, platform-owned semantic identifier exposed across OICUNT services and client APIs (e.g. `claude-sonnet`, `claude-opus`, `gpt-4o`, `gemini-pro`, `oicunt.model.general`). It represents an authoritative model definition, decoupled from provider endpoints.
+   The stable, platform-owned semantic identifier exposed across OICUNT services and client APIs (e.g. `oicunt.model.catalog-alpha`, `oicunt.model.catalog-beta`, `provider-model-beta`, `provider-model-gamma`, `oicunt.model.catalog-alpha`). It represents an authoritative model definition, decoupled from provider endpoints.
 2. **`family`**:  
-   The model family grouping (e.g. `'claude'`, `'gpt'`, `'gemini'`). Used by client applications (BILLY) for catalog categorization and filtering.
+   The model family grouping (e.g. `'catalog-alpha'`, `'gpt'`, `'gemini'`). Used by client applications (BILLY) for catalog categorization and filtering.
 3. **`effort` (`ReasoningEffortLevel`)**:  
    An execution parameter and capability (`'low' | 'medium' | 'high'`), NOT a separate model identity. Dynamically declared in model capabilities and validated by the Model Registry.
 4. **`modelVersion`**:  
    The platform version string of a canonical model definition (e.g. `v1.0.0`, `v1.2.0`). It allows non-breaking upgrades of underlying targets while pinning deterministic behavior when required.
 5. **`provider`**:  
-   The upstream model vendor or infrastructure category: `'anthropic' | 'openai' | 'google' | 'bedrock' | 'azure-openai' | 'local' | 'custom'`.
+   The upstream model vendor or infrastructure category: `'test-provider' | 'openai' | 'google' | 'bedrock' | 'azure-openai' | 'local' | 'custom'`.
 6. **`upstreamModelId`**:  
-   The proprietary, vendor-assigned model identifier required by the upstream API (e.g. `claude-3-5-sonnet-20241022`, `gpt-4o-2024-08-06`, `gemini-1.5-pro-002`). This identifier remains strictly internal to provider adapters and model target configurations.
+   The proprietary, vendor-assigned model identifier required by the upstream API (e.g. `provider-model-alpha-v1`, `provider-model-beta-2024-08-06`, `gemini-1.5-pro-002`). This identifier remains strictly internal to provider adapters and model target configurations.
 7. **`modelTarget`**:  
    A concrete execution endpoint binding a `provider`, `upstreamModelId`, priority, weight, regional endpoint, and execution limits. Multiple targets can back a single model version, enabling transparent provider replacement.
 8. **`routingPolicy`**:  
@@ -212,15 +212,15 @@ To prevent architectural ambiguity, the following concepts are strictly delineat
 
 The platform defines standard canonical model identifiers in `@oicunt-ai/model-types`:
 
-| Canonical Model Identifier | Family   | Capabilities & Reasoning                              | Typical Workloads                                             |
-| -------------------------- | -------- | ----------------------------------------------------- | ------------------------------------------------------------- |
-| `claude-sonnet`            | `claude` | Multimodal, Tools, Reasoning (effort: low, med, high) | Frontier coding, multi-turn reasoning, agent execution        |
-| `claude-opus`              | `claude` | Multimodal, Tools, Deep Reasoning (effort: low..high) | Complex systems design, deep research, mathematical deduction |
-| `claude-haiku`             | `claude` | Fast text, vision, streaming                          | High-throughput fast interactions, summaries, triage          |
-| `gpt-4o`                   | `gpt`    | Multimodal, Tools, Structured Outputs                 | General conversational, structured JSON, tool execution       |
-| `gemini-pro`               | `gemini` | Long-context multimodal, Tools, Reasoning             | Massive context analysis, document extraction, multimodal QA  |
-| `oicunt.model.general`     | `custom` | Conversational intelligence & synthesis               | Enterprise default conversational turns                       |
-| `oicunt.model.embedding`   | `custom` | High-dimensional vector representation                | Semantic indexing, retrieval-augmented generation (RAG)       |
+| Canonical Model Identifier       | Family          | Capabilities & Reasoning                              | Typical Workloads                                             |
+| -------------------------------- | --------------- | ----------------------------------------------------- | ------------------------------------------------------------- |
+| `oicunt.model.catalog-alpha`     | `catalog-alpha` | Multimodal, Tools, Reasoning (effort: low, med, high) | Frontier coding, multi-turn reasoning, agent execution        |
+| `oicunt.model.catalog-beta`      | `catalog-alpha` | Multimodal, Tools, Deep Reasoning (effort: low..high) | Complex systems design, deep research, mathematical deduction |
+| `oicunt.model.catalog-gamma`     | `catalog-alpha` | Fast text, vision, streaming                          | High-throughput fast interactions, summaries, triage          |
+| `provider-model-beta`            | `gpt`           | Multimodal, Tools, Structured Outputs                 | General conversational, structured JSON, tool execution       |
+| `provider-model-gamma`           | `gemini`        | Long-context multimodal, Tools, Reasoning             | Massive context analysis, document extraction, multimodal QA  |
+| `oicunt.model.catalog-alpha`     | `custom`        | Conversational intelligence & synthesis               | Enterprise default conversational turns                       |
+| `oicunt.model.catalog-embedding` | `custom`        | High-dimensional vector representation                | Semantic indexing, retrieval-augmented generation (RAG)       |
 
 ---
 
@@ -254,7 +254,7 @@ export interface ModelCatalogEntry {
 
 ```typescript
 export interface ModelResolutionRequest {
-  /** The canonical model ID to resolve (e.g. 'claude-sonnet', 'gpt-4o') */
+  /** The OICUNT catalog model ID to resolve (e.g. 'oicunt.model.catalog-alpha') */
   readonly canonicalModelId: CanonicalModelId;
   /** Optional specific version or release tag (e.g. 'v1.0.0'); defaults to active */
   readonly version?: string;
@@ -307,7 +307,7 @@ export interface ModelResolutionResponse {
 export type ModelAvailabilityStatus = 'available' | 'degraded' | 'maintenance' | 'deprecated';
 
 export interface ModelTarget {
-  /** Unique target identifier within registry (e.g. 'target-anthropic-sonnet-us') */
+  /** Unique target identifier within registry (e.g. 'target-provider-a-alpha-us') */
   readonly targetId: string;
   /** Target provider category */
   readonly provider: ModelProviderType;
@@ -548,11 +548,11 @@ Provider adapters translate proprietary vendor errors into canonical platform er
 ### 7.2 Security & Credential Boundaries
 
 1. **Credential Isolation**:
-   - Upstream API keys (e.g. `ANTHROPIC_API_KEY`, `OPENAI_API_KEY`) and IAM roles are strictly contained within `providers/*` adapter runtimes.
+   - Upstream API keys (e.g. `EXTERNAL_PROVIDER_API_KEY`, `OPENAI_API_KEY`) and IAM roles are strictly contained within `providers/*` adapter runtimes.
    - Credentials must **never** be logged, returned in API error messages, or passed to the Orchestrator, Model Registry, or BILLY.
 2. **Information Leakage Prevention**:
    - Raw stack traces and upstream vendor error payloads must be stripped from client-facing responses.
-   - Internal model target names (e.g. `claude-3-5-sonnet-20241022`) must never leak to BILLY or external clients.
+   - Internal model target names (e.g. `provider-model-alpha-v1`) must never leak to BILLY or external clients.
 
 ---
 

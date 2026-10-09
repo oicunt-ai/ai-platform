@@ -1,69 +1,16 @@
-# Model Providers Boundary (`providers/`)
+# Provider Adapter Boundary
 
-This directory defines the boundary for **Upstream AI Model Provider Adapters** in the OICUNT AI Platform.
+This directory documents the provider anti-corruption boundary used by the Model Gateway.
 
----
+No concrete provider adapter is currently included. Future providers must be implemented behind the existing `IProviderAdapter` contract and registered with the Model Gateway adapter registry. Adding an adapter must not add provider logic to BILLY, Platform Gateway, AI Orchestrator, Inference, or Model Registry.
 
-## 1. Architectural Purpose & Anti-Corruption Layer
+The boundary guarantees:
 
-The `providers/` boundary isolates external AI model vendors (e.g. Anthropic, OpenAI, Google Gemini, AWS Bedrock, Azure OpenAI, local model runners) from the rest of the OICUNT platform.
+- public callers select only stable IDs in the `oicunt.model.<catalog-slug>` namespace;
+- Model Registry stores the private mapping from an OICUNT model ID to provider targets and upstream model IDs;
+- Model Gateway selects the registered adapter named by the resolved target;
+- provider credentials and endpoints belong to the adapter's Model Gateway configuration, never Registry metadata;
+- raw provider requests, responses, errors, and model identifiers never cross the adapter boundary;
+- normalized streaming, cancellation, timeout, retry, error, and Usage behavior remains owned by the existing Model Gateway pipeline.
 
-```
-┌─────────────────────────────────────────────────────────────────┐
-│                     OICUNT Model Gateway                        │
-└────────────────────────────────┬────────────────────────────────┘
-                                 │
-                                 ▼ (Canonical contracts: @oicunt-ai/ai-types, @oicunt-ai/model-types)
-┌─────────────────────────────────────────────────────────────────┐
-│                      providers/ Boundary                        │
-│                                                                 │
-│  ┌───────────────┐ ┌───────────────┐ ┌───────────────┐ ┌──────┐ │
-│  │ Anthropic     │ │ OpenAI        │ │ Google Gemini │ │ ...  │ │
-│  │ Adapter       │ │ Adapter       │ │ Adapter       │ │      │ │
-│  └───────────────┘ └───────────────┘ └───────────────┘ └──────┘ │
-└────────────────────────────────┬────────────────────────────────┘
-                                 │
-                                 ▼ (Vendor-specific wire protocols & SDKs)
-┌─────────────────────────────────────────────────────────────────┐
-│                  Upstream External Model APIs                   │
-└─────────────────────────────────────────────────────────────────┘
-```
-
----
-
-## 2. Core Boundary Invariants
-
-1. **Zero Vendor Leakage**:
-   - Provider SDK types, raw request JSON, and vendor-specific parameter names (`max_tokens_to_sample`, `system_instruction`, `safety_settings`, etc.) must **never** escape the provider adapter.
-   - All internal platform components only consume and produce `@oicunt-ai/ai-types` and `@oicunt-ai/model-types`.
-
-2. **Model/Provider Separation**:
-   - Platform services reference models exclusively via canonical OICUNT identifiers (`oicunt.model.general`, `oicunt.model.reasoning`).
-   - Provider-specific model IDs (e.g. `claude-3-5-sonnet-20241022`, `gpt-4o-2024-08-06`) remain internal to provider configuration and are resolved exclusively within the Model Gateway and provider adapter.
-
-3. **Bidirectional Translation Mechanics**:
-   - **Inbound Translation**: Converts `NormalizedCompletionRequest` into the vendor's native API request payload.
-   - **Outbound Translation**: Converts synchronous vendor responses into `NormalizedCompletionData`.
-   - **Streaming Translation**: Parses raw vendor chunk events and emits canonical `StreamEvent` SSE events (`token`, `tool_call`, `thinking`, `finish`, `error`).
-
-4. **Authoritative Error Normalization**:
-   - Upstream HTTP status codes, provider error codes (`rate_limit_exceeded`, `context_length_exceeded`, `authentication_error`), and network aborts must be mapped into canonical platform error envelopes.
-   - Internal credentials and vendor error details must be stripped before bubbling to callers.
-
-5. **Credential Containment**:
-   - Vendor API keys, AWS IAM roles, and secret rotation credentials reside exclusively within provider adapter infrastructure. No other platform component has access to provider tokens.
-
-6. **Resilience & Rate Limiting**:
-   - Adapters encapsulate provider-specific retry budgets, jittered exponential backoffs, concurrency limits, and circuit breakers to insulate the platform against upstream outages.
-
----
-
-## 3. Adapter Implementations & Roadmap
-
-Provider adapters reside internally within the Model Gateway provider boundary (`services/model-gateway/src/infrastructure/adapters/`) and function as anti-corruption layers rather than standalone microservices:
-
-- **Anthropic Provider Adapter** (`services/model-gateway/src/infrastructure/adapters/anthropic/`): **Implemented** (supporting canonical model `claude-sonnet`, unary execution, real-time SSE streaming, and error normalization).
-- **OpenAI Adapter**: Planned (OpenAI Chat Completions client and chunk normalizer).
-- **Google Gemini Adapter**: Planned (Google GenAI SDK adapter and Gemini stream normalizer).
-- **AWS Bedrock Adapter**: Planned (AWS Bedrock Converse API adapter with SigV4 request signing).
-- **Local Runner Adapter**: Planned (Self-hosted model endpoint adapter for vLLM / Ollama).
+Until a provider adapter is configured, Model Gateway remains live but reports not-ready and dispatch returns the existing provider-unavailable error.
