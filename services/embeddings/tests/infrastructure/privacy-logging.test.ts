@@ -19,7 +19,7 @@ describe('Privacy-Preserving Logging Verification', () => {
 
     logger.info('Embeddings generated successfully', {
       tenantId: 'tenant-test-99',
-      model: 'oicunt.model.embedding',
+      model: 'oicunt.model.catalog-embedding',
       modelVersion: '1.0.0',
       batchSize: 1,
       totalCharacters: rawInputText.length,
@@ -49,7 +49,7 @@ describe('Privacy-Preserving Logging Verification', () => {
     // Verify allowed metadata fields are preserved
     const parsed = JSON.parse(capturedStdout.trim()) as Record<string, unknown>;
     expect(parsed['tenantId']).toBe('tenant-test-99');
-    expect(parsed['model']).toBe('oicunt.model.embedding');
+    expect(parsed['model']).toBe('oicunt.model.catalog-embedding');
     expect(parsed['modelVersion']).toBe('1.0.0');
     expect(parsed['batchSize']).toBe(1);
     expect(parsed['totalCharacters']).toBe(rawInputText.length);

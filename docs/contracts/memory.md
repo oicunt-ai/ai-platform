@@ -48,7 +48,7 @@ Memory isolates the mechanics of conversation thread lifecycle management, messa
                ▼                                        ▼
 ┌──────────────────────────────┐       ┌─────────────────────────────────┐
 │  Dedicated Memory Database   │       │        Provider Adapters        │
-│ (PostgreSQL: oicunt_memory)  │       │   Anthropic • Bedrock • OpenAI  │
+│ (PostgreSQL: oicunt_memory)  │       │   upstream provider • Bedrock • OpenAI  │
 └──────────────────────────────┘       └─────────────────────────────────┘
 ```
 
@@ -158,11 +158,11 @@ The Memory Service authoritatively owns:
 The Memory Service strictly **does NOT** own:
 
 1. **NO Model Provider Calls**:
-   - Memory **never** communicates with third-party model providers (Anthropic, OpenAI, Google, AWS Bedrock).
+   - Memory **never** communicates with third-party model providers (upstream provider, OpenAI, Google, AWS Bedrock).
    - Memory contains **zero provider API keys or credentials**.
 2. **NO Inference Execution**:
    - Memory **never** executes completions, runs models, or computes text generation.
-   - Memory **never** imports vendor SDKs (`@anthropic-ai/sdk`, `openai`, `@google/genai`).
+   - Memory **never** imports vendor SDKs (`a vendor SDK`, `openai`, `@google/genai`).
 3. **NO Model Catalog or Selection Authority**:
    - Memory does not register models, evaluate routing policies, or query Model Registry.
    - Canonical model selection is owned by Product / Orchestrator.
@@ -413,7 +413,7 @@ To maintain stateless independence from vendor SDKs while supporting prompt budg
 
 - The Memory Service uses bounded heuristic token estimation (`~4 characters per token` for English text, plus structural overhead for tool calls and images).
 - When a caller or Orchestrator provides explicit authoritative token usage reported by Model Gateway, Memory persists that authoritative metric in `message.tokenEstimate`.
-- Provider tokenizers (`tiktoken`, `@anthropic-ai/tokenizer`) are **never imported**.
+- Provider tokenizers (`tiktoken`, `a vendor tokenizer package`) are **never imported**.
 
 ---
 
@@ -657,10 +657,11 @@ WHERE id = $1 AND tenant_id = $2
 FOR UPDATE;
 
 -- Insert each message with strictly increasing, unique sequenceNumber (gaps permitted)
+-- and its zero-based turn_ordinal; identical turn_id retries return existing rows
 INSERT INTO conversation_messages (
-  id, conversation_id, tenant_id, turn_id, sequence_number, role, content, name, token_estimate, metadata, created_at
+  id, conversation_id, tenant_id, turn_id, turn_ordinal, sequence_number, role, content, name, token_estimate, metadata, created_at
 ) VALUES
-  ($3, $1, $2, $4, $5, $6, $7, $8, $9, $10, NOW()),
+  ($3, $1, $2, $4, $5, $6, $7, $8, $9, $10, $11, NOW()),
   ...;
 
 -- Update conversation aggregate counters
@@ -835,6 +836,7 @@ CREATE TABLE conversation_messages (
     conversation_id VARCHAR(64) NOT NULL REFERENCES conversations(id) ON DELETE CASCADE,
     tenant_id VARCHAR(64) NOT NULL,
     turn_id VARCHAR(64) NOT NULL,
+    turn_ordinal INTEGER NOT NULL,
     sequence_number INTEGER NOT NULL,
     role VARCHAR(32) NOT NULL,
     content JSONB NOT NULL,
@@ -844,6 +846,14 @@ CREATE TABLE conversation_messages (
     created_at TIMESTAMPTZ NOT NULL DEFAULT NOW(),
     CONSTRAINT uq_messages_conversation_sequence UNIQUE (conversation_id, sequence_number)
 );
+
+CREATE UNIQUE INDEX uq_messages_conversation_turn_ordinal
+    ON conversation_messages (conversation_id, turn_id, turn_ordinal);
+
+-- Turn checkpoint idempotency: retrying a checkpoint with the same turn_id and
+-- identical ordered content returns the existing messages; the same turn_id
+-- with different content is rejected. turn_ordinal is backfilled by migration
+-- 002_turn_checkpoint_idempotency.sql from sequence_number order.
 
 CREATE INDEX idx_messages_conversation_seq_desc ON conversation_messages (conversation_id, sequence_number DESC);
 CREATE INDEX idx_messages_tenant_turn ON conversation_messages (tenant_id, turn_id);
@@ -1036,7 +1046,7 @@ services/memory/
 - **`application`**: Depends on `domain` and ports. Never imports `infrastructure` or `interfaces`.
 - **`infrastructure`**: Implements application ports (e.g. `PostgresConversationRepository`). Depends on `application` and `domain`.
 - **`interfaces`**: Inbound HTTP controllers. Calls application use cases.
-- **FORBIDDEN**: Vendor LLM SDKs (`@anthropic-ai/sdk`, `openai`), provider credentials, Model Gateway imports, cross-service database access.
+- **FORBIDDEN**: Vendor LLM SDKs (`a vendor SDK`, `openai`), provider credentials, Model Gateway imports, cross-service database access.
 
 ---
 
@@ -1060,7 +1070,7 @@ Any implementation of the Memory Service MUST satisfy the following checklist:
 
 - [ ] Memory **never** calls model providers or external LLM endpoints directly.
 - [ ] Memory **never** contains provider API keys or credentials.
-- [ ] Memory **never** imports vendor SDKs (`@anthropic-ai/sdk`, `openai`, `@google/genai`).
+- [ ] Memory **never** imports vendor SDKs (`a vendor SDK`, `openai`, `@google/genai`).
 - [ ] Memory **never** executes completions, runs inference, or selects models.
 - [ ] Memory **never** executes tools, hosts code sandboxes, or runs agent loops.
 - [ ] Memory **never** performs document chunking, vector indexing, or semantic search.

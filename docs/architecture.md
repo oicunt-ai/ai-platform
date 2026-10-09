@@ -36,7 +36,7 @@ This repository is engineered for long-term production scale, high reliability, 
                                     ▼ (Provider Schemas)
 ┌────────────────────────────────────────────────────────────────────────┐
 │                       Upstream AI Model Providers                      │
-│            Anthropic • OpenAI • Google Gemini • AWS Bedrock            │
+│                  Configured Upstream Model Providers                   │
 └────────────────────────────────────────────────────────────────────────┘
 ```
 
@@ -77,7 +77,7 @@ The OICUNT enterprise maintains a strict division of architectural responsibilit
 2. **BILLY AI Assistant Product**: BILLY is the OICUNT AI Assistant product—a separate product repository that consumes platform capabilities (for user identity, subscription entitlements, and usage limits) and AI platform capabilities (for prompt orchestration, model completions, tool calls, and agent runs). BILLY is **not** a billing system.
 3. **No Duplication of Company Capabilities**: `ai-platform` must **never** implement authentication services, user account stores, billing, subscriptions, products, usage tracking, payment processors, or public API ingress routing.
 4. **Trusted Upstream Identity**: Inbound requests received by `ai-platform` have already passed through the platform API Gateway. Headers such as `X-User-ID`, `X-Tenant-ID`, and `X-Correlation-ID` are trusted authoritative metadata.
-5. **Credential Containment**: Provider credentials (Anthropic API keys, OpenAI keys, Google Cloud ADC, AWS IAM roles) reside exclusively within `ai-platform` provider adapters. The company platform repository never touches upstream AI keys.
+5. **Credential Containment**: Provider credentials reside exclusively within Model Gateway provider adapters. The company platform repository never touches upstream AI keys.
 6. **Independence**: `ai-platform` maintains independent repository lifecycles, CI/CD pipelines, package versioning, and deployment manifests.
 
 ---
@@ -158,7 +158,7 @@ graph TD
 
 - **Acyclic Dependency Graph**: Services must never establish cyclic dependencies.
 - **Hierarchical Invocation**: Client requests flow: `API Gateway` &rarr; `Orchestrator` (which coordinates with `Model Registry`, `Memory`, and `Knowledge`) &rarr; `Inference` &rarr; `Model Gateway` &rarr; `Provider Adapter`.
-- **No Direct Vendor Leaks**: Upstream provider SDKs (Anthropic, OpenAI, Google) are strictly forbidden from being imported by any service other than provider adapters inside `providers/`.
+- **No Direct Vendor Leaks**: Upstream provider SDKs are strictly forbidden outside provider adapters.
 
 ### 4.4 Provider Adapter Isolation
 
@@ -168,7 +168,7 @@ graph TD
 
 ### 4.5 Canonical Model Abstraction & Dynamic Catalog Discovery
 
-- **Platform Identifiers**: Public requests and internal service-to-service calls specify canonical OICUNT identifiers (e.g. `claude-sonnet`, `claude-opus`, `gpt-4o`, `gemini-pro`, as well as namespaced identifiers like `oicunt.model.general`), never raw vendor model names (`claude-3-5-sonnet-20241022`, `gpt-4o-2024-08-06`).
+- **Platform Identifiers**: Public requests and internal service-to-service calls specify stable OICUNT catalog IDs in the `oicunt.model.<catalog-slug>` namespace, never raw upstream model names.
 - **Dynamic Model Catalog**: The Model Registry exposes `GET /internal/v1/catalog` returning sanitized model entries (`ModelCatalogEntry[]`) for BILLY and client model pickers without leaking internal provider endpoints or secrets.
 - **Reasoning Effort Governance**: Reasoning effort (`low`, `medium`, `high`) is a model capability and request parameter, NOT a separate model identifier. The Model Registry dynamically validates effort parameters against declared model capabilities (`capabilities.supportedEffortLevels`).
 - **Transparent Provider Replacement**: Model versions map to one or more internal provider targets with priority and weights. Provider outages or maintenance cordoning trigger transparent failover without altering the user-selected model or requiring client redesign.
@@ -297,7 +297,7 @@ services/
 | ---------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ | -------------------------------------------------------------------------------- |
 | `orchestrator`   | Coordinates conversational turns, prompt assembly, and iterative tool loops. Does not contain provider-specific code (see [AI Orchestrator Contract](./contracts/ai-orchestrator.md)).                                      | HTTP turn endpoint, Event consumers                                | Inference, Model Registry, Memory, Knowledge, Tools                              |
 | `model-gateway`  | The singular provider egress boundary. Normalizes payloads, manages provider fallbacks, enforces rate limits, handles SSE streams (see [Model Gateway Contract](./contracts/model-gateway.md)).                             | HTTP completion & stream dispatch                                  | Provider Adapters (`providers/*`), Observability                                 |
-| `model-registry` | Canonical model catalog. Maintains canonical IDs (`claude-sonnet`, `gpt-4o`, `oicunt.model.*`), provider target mappings, context limits, and cost tables (see [Model Registry Contract](./contracts/model-registry.md)).   | HTTP catalog & resolution query                                    | Database / Configuration store                                                   |
+| `model-registry` | Authoritative model catalog. Maintains OICUNT model IDs, provider target mappings, context limits, and cost tables (see [Model Registry Contract](./contracts/model-registry.md)).                                          | HTTP catalog & resolution query                                    | Database / Configuration store                                                   |
 | `inference`      | Coordinates inference execution lifecycle, normalized request/response boundaries, deadline/cancellation propagation, and streaming (see [Inference Service Contract](./contracts/inference.md)).                           | HTTP inference request                                             | Model Gateway, Internal runtimes                                                 |
 | `memory`         | Manages conversation memory windows, message persistence, token summarization, and episodic context stores (see [Memory Service Contract](./contracts/memory.md)).                                                          | HTTP memory query & update                                         | Dedicated memory storage adapter                                                 |
 | `knowledge`      | Owns user/tenant collections, document lifecycle, chunking, abstract embeddings, vector similarity search, and provenance (see [Knowledge Service Contract](./contracts/knowledge.md)).                                     | HTTP retrieval and document API (`/internal/v1/knowledge/*`)       | DocumentRepositoryPort, VectorStorePort, EmbeddingServicePort, ObjectStoragePort |
@@ -331,7 +331,7 @@ workers/
 
 The `providers/` directory contains vendor-specific adapters isolating external LLM APIs:
 
-- **Anthropic Adapter**: Maps `NormalizedCompletionRequest` to Anthropic Messages API; translates Claude SSE stream to `StreamEvent`.
+- No concrete provider adapter is currently active. Future adapters implement `IProviderAdapter` inside this boundary.
 - **OpenAI Adapter**: Maps to OpenAI Chat Completions API; translates chunks to `StreamEvent`.
 - **Google Gemini Adapter**: Maps to Google GenAI SDK; translates stream chunks to `StreamEvent`.
 - **AWS Bedrock Adapter**: Maps to Bedrock Converse API with SigV4 authentication.
@@ -362,7 +362,7 @@ Every future implementation must satisfy the following invariants:
 
 - [ ] AI services must never expose provider-specific APIs outside `providers/`.
 - [ ] Provider SDKs must not leak into shared packages or orchestrators.
-- [ ] AI services consume canonical OICUNT model identifiers (`claude-sonnet`, `gpt-4o`, `oicunt.model.*`).
+- [ ] AI services consume only canonical OICUNT model identifiers (`oicunt.model.*`).
 - [ ] Provider-specific model IDs remain internal to provider configuration.
 - [ ] Model Gateway is the singular provider egress boundary.
 - [ ] Model Registry is the singular model catalog and routing configuration boundary.

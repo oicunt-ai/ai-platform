@@ -51,7 +51,7 @@ describe('Embeddings Error Taxonomy', () => {
     expect(unsuppModel.statusCode).toBe(404);
     expect(unsuppModel.retryable).toBe(false);
 
-    const unsuppCap = new UnsupportedCapabilityError('gpt-4o', 'embedding');
+    const unsuppCap = new UnsupportedCapabilityError('provider-model-beta', 'embedding');
     expect(unsuppCap.code).toBe('UNSUPPORTED_CAPABILITY');
     expect(unsuppCap.statusCode).toBe(400);
     expect(unsuppCap.retryable).toBe(false);

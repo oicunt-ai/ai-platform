@@ -11,7 +11,7 @@ This directory houses the foundational, domain-agnostic contracts, schemas, and 
 2. **Strict Inward Dependency Flow**:
    External layers (`services/*`, `workers/*`, `providers/*`, `templates/*`) depend on `packages/*`. Packages **never** depend on services, workers, providers, or templates.
 3. **No Vendor Leaks**:
-   Shared packages must never import or expose vendor-specific SDK types (e.g. OpenAI, Anthropic, Google SDK structures). All external representations are strictly mapped into normalized OICUNT AI Platform types.
+   Shared packages must never import or expose vendor-specific SDK types (e.g. OpenAI, upstream provider, Google SDK structures). All external representations are strictly mapped into normalized OICUNT AI Platform types.
 4. **Directed Acyclic Graph (DAG)**:
    Inter-package dependencies form a strict acyclic graph enforced by TypeScript project references (`composite: true`). Circular dependencies are rejected by the compiler.
 5. **No Service Duplication**:

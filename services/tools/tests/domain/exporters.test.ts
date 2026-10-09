@@ -18,16 +18,6 @@ describe('Tools Schema Exporters', () => {
     expect(fn.parameters).toEqual(tool.parameters);
   });
 
-  it('exports to Anthropic tools format', () => {
-    const exported = exportTool(tool, 'anthropic') as {
-      name: string;
-      description: string;
-      input_schema: unknown;
-    };
-    expect(exported.name).toBe(tool.toolId);
-    expect(exported.input_schema).toEqual(tool.parameters);
-  });
-
   it('exports to Gemini function declaration format', () => {
     const exported = exportTool(tool, 'gemini') as {
       name: string;

@@ -14,6 +14,6 @@ Universal AI conversation primitives, canonical turn structures, multimodal cont
 
 ## Boundary Invariants
 
-- Upstream provider-specific payloads (OpenAI JSON, Anthropic JSON, Google Gemini JSON) must NEVER be exposed directly in this package.
+- Upstream provider-specific payloads (OpenAI JSON, upstream provider JSON, Google Gemini JSON) must NEVER be exposed directly in this package.
 - All services (Orchestrator, Model Gateway, etc.) communicate using these normalized primitives.
 - Pure contracts with zero runtime dependencies.

@@ -74,7 +74,7 @@ The OICUNT AI Platform partitions responsibilities across seven dedicated subsys
 ### 2.1 What the Embeddings Service Owns
 
 1. **Normalized Embedding Requests**: Ingestion and validation of provider-neutral embedding generation payloads.
-2. **Canonical Model Identity Enforcement**: Enforcing OICUNT canonical model identities (`oicunt.model.embedding`, `text-embedding-3-small`, etc.) without exposing provider-specific model IDs to consumers.
+2. **Canonical Model Identity Enforcement**: Enforcing OICUNT canonical model identities (`oicunt.model.catalog-embedding`, `text-embedding-3-small`, etc.) without exposing provider-specific model IDs to consumers.
 3. **Model Resolution Coordination**: Resolving embedding model capability, default/supported dimensions, and context bounds via the **Model Registry**.
 4. **Dimension Contract Validation**: Validating requested output dimensions against model capability (e.g., verifying fixed dimensions like 1536, or permissible dimensions for models supporting Matryoshka Representation Learning).
 5. **Deterministic Batching & Ordering**: Accepting multi-item text arrays, maintaining strictly monotonic item-to-vector index mapping, and enforcing all-or-nothing batch atomicity.
@@ -118,9 +118,9 @@ Consistent with the platform's model identity architecture ([`docs/contracts/mod
 ```typescript
 // Shared model identity contracts from @oicunt-ai/model-types
 export type CanonicalEmbeddingModelId =
-  | 'oicunt.model.embedding' // Platform default general-purpose dense embedding
-  | 'oicunt.model.embedding.fast' // Low-latency high-throughput embedding
-  | 'oicunt.model.embedding.code' // Codebase and technical text embedding
+  | 'oicunt.model.catalog-embedding' // Platform default general-purpose dense embedding
+  | 'oicunt.model.catalog-embedding.fast' // Low-latency high-throughput embedding
+  | 'oicunt.model.catalog-embedding.code' // Codebase and technical text embedding
   | 'text-embedding-3-small' // Frontier small embedding model
   | 'text-embedding-3-large' // Frontier high-dimensional embedding model
   | (string & {});
@@ -139,7 +139,7 @@ Before dispatching embedding generation, the Embeddings Service resolves the mod
 
 ### 3.3 Transparent Target Replacement Without Identity Drift
 
-Under no circumstances may the Embeddings Service substitute an unrelated embedding model. If `oicunt.model.embedding` is configured with a primary OpenAI target and a secondary Bedrock fallback target, the fallback target must execute an identical or verified vector-compatible representation as defined by the platform routing policy. Changing the underlying embedding model family changes the vector space and breaks existing vector indices; therefore, target replacement policies for embedding models require strict vector-space equivalence.
+Under no circumstances may the Embeddings Service substitute an unrelated embedding model. If `oicunt.model.catalog-embedding` is configured with a primary OpenAI target and a secondary Bedrock fallback target, the fallback target must execute an identical or verified vector-compatible representation as defined by the platform routing policy. Changing the underlying embedding model family changes the vector space and breaks existing vector indices; therefore, target replacement policies for embedding models require strict vector-space equivalence.
 
 ---
 
@@ -203,7 +203,7 @@ sequenceDiagram
 export interface EmbeddingGenerationRequest {
   /**
    * Canonical embedding model identifier.
-   * Example: 'oicunt.model.embedding', 'text-embedding-3-small'
+   * Example: 'oicunt.model.catalog-embedding', 'text-embedding-3-small'
    */
   readonly model: string;
 
@@ -299,7 +299,7 @@ export interface NormalizedEmbeddingResponse {
 {
   "success": true,
   "data": {
-    "model": "oicunt.model.embedding",
+    "model": "oicunt.model.catalog-embedding",
     "modelVersion": "v1.0.0",
     "dimensions": 1536,
     "embeddings": [
@@ -485,7 +485,7 @@ To guarantee vector space homogeneity:
    When a `KnowledgeCollection` is created in Knowledge, its `embeddingConfig` is locked permanently:
    ```typescript
    export interface EmbeddingModelConfig {
-     readonly modelId: string; // e.g. 'oicunt.model.embedding'
+     readonly modelId: string; // e.g. 'oicunt.model.catalog-embedding'
      readonly dimensions: number; // e.g. 1536
      readonly version: string; // e.g. '1.0.0'
    }

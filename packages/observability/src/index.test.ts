@@ -14,7 +14,7 @@ describe('@oicunt-ai/observability', () => {
     expect(() => {
       span.setAttribute('test', 'value');
       span.setAttributes({ count: 1 });
-      span.setGenAiAttributes({ 'gen_ai.system': 'anthropic' });
+      span.setGenAiAttributes({ 'gen_ai.system': 'test-provider' });
       span.setStatus('ok');
       span.end();
     }).not.toThrow();
@@ -32,27 +32,27 @@ describe('@oicunt-ai/observability', () => {
   it('allows recording metrics using NoopAiMetricsRecorder without throwing', () => {
     const recorder = new NoopAiMetricsRecorder();
     expect(() => {
-      recorder.recordTokenUsage('oicunt.model.general', {
+      recorder.recordTokenUsage('oicunt.model.catalog-alpha', {
         promptTokens: 10,
         completionTokens: 5,
         totalTokens: 15,
       });
-      recorder.recordInferenceDuration('oicunt.model.general', 250);
-      recorder.recordEstimatedCost('oicunt.model.general', 0.0001);
+      recorder.recordInferenceDuration('oicunt.model.catalog-alpha', 250);
+      recorder.recordEstimatedCost('oicunt.model.catalog-alpha', 0.0001);
       recorder.recordToolExecution('calculator', 10, true);
     }).not.toThrow();
   });
 
   it('validates GenAiSpanAttributes type compatibility', () => {
     const attrs: GenAiSpanAttributes = {
-      'gen_ai.system': 'anthropic',
-      'gen_ai.request.model': 'claude-3-5-sonnet',
+      'gen_ai.system': 'test-provider',
+      'gen_ai.request.model': 'provider-model-alpha',
       'gen_ai.usage.input_tokens': 150,
       'gen_ai.usage.output_tokens': 50,
-      'oicunt.canonical_model': 'oicunt.model.general',
+      'oicunt.canonical_model': 'oicunt.model.catalog-alpha',
       'oicunt.correlation_id': 'corr-abc-123',
     };
-    expect(attrs['gen_ai.system']).toBe('anthropic');
-    expect(attrs['oicunt.canonical_model']).toBe('oicunt.model.general');
+    expect(attrs['gen_ai.system']).toBe('test-provider');
+    expect(attrs['oicunt.canonical_model']).toBe('oicunt.model.catalog-alpha');
   });
 });

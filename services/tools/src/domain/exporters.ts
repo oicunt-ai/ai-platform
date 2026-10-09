@@ -1,6 +1,6 @@
 import type { ToolDefinition } from './types.js';
 
-export type ToolExportFormat = 'canonical' | 'openai' | 'anthropic' | 'gemini' | 'mcp';
+export type ToolExportFormat = 'canonical' | 'openai' | 'gemini' | 'mcp';
 
 export interface OpenAiFunctionDefinition {
   readonly type: 'function';
@@ -9,12 +9,6 @@ export interface OpenAiFunctionDefinition {
     readonly description: string;
     readonly parameters: ToolDefinition['parameters'];
   };
-}
-
-export interface AnthropicToolDefinition {
-  readonly name: string;
-  readonly description: string;
-  readonly input_schema: ToolDefinition['parameters'];
 }
 
 export interface GeminiFunctionDeclaration {
@@ -30,11 +24,7 @@ export interface McpToolDescriptor {
 }
 
 export type ExportedTool =
-  | ToolDefinition
-  | OpenAiFunctionDefinition
-  | AnthropicToolDefinition
-  | GeminiFunctionDeclaration
-  | McpToolDescriptor;
+  ToolDefinition | OpenAiFunctionDefinition | GeminiFunctionDeclaration | McpToolDescriptor;
 
 export function exportTool(
   tool: ToolDefinition,
@@ -49,13 +39,6 @@ export function exportTool(
           description: tool.description,
           parameters: tool.parameters,
         },
-      };
-
-    case 'anthropic':
-      return {
-        name: tool.toolId,
-        description: tool.description,
-        input_schema: tool.parameters,
       };
 
     case 'gemini':

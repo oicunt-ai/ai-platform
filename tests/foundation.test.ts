@@ -19,7 +19,7 @@ describe('AI Platform Foundation Integration', () => {
     };
     const completion: NormalizedCompletionData = {
       completionId: 'test-1',
-      model: 'oicunt.model.general',
+      model: 'oicunt.model.catalog-alpha',
       message: chatMsg,
       finishReason: 'stop',
       usage: { promptTokens: 5, completionTokens: 2, totalTokens: 7 },

@@ -221,7 +221,7 @@ export interface ExecutionTimeoutPolicy {
 
 ## 4. Tool Schema & Parameter Specification
 
-To guarantee provider-neutral interoperability across OpenAI, Anthropic, Google Gemini, and MCP clients, tool schemas are authored in standard **JSON Schema** (draft-07).
+To guarantee provider-neutral interoperability across OpenAI, upstream provider, Google Gemini, and MCP clients, tool schemas are authored in standard **JSON Schema** (draft-07).
 
 ### 4.1 Canonical Tool Definition Schema
 
@@ -301,7 +301,7 @@ The Tools Service provides native schema exporters translating `ToolDefinition` 
 flowchart LR
     Canonical[Canonical ToolDefinition<br/>JSON Schema Draft-07] --> Exporter[Tools Schema Exporter]
     Exporter --> OpenAI[OpenAI Tools Format<br/>type: 'function', function: { ... }]
-    Exporter --> Anthropic[Anthropic Tools Format<br/>name, description, input_schema]
+    Exporter --> upstream provider[upstream provider Tools Format<br/>name, description, input_schema]
     Exporter --> Gemini[Google Gemini Format<br/>functionDeclarations: [ ... ]]
     Exporter --> MCP[MCP Tool Descriptor<br/>name, description, inputSchema]
 ```
@@ -889,7 +889,7 @@ Discovers tools accessible to the calling tenant and actor.
   - `product?: string` (e.g. `billy`)
   - `category?: string`
   - `capabilities?: string` (comma-separated: `read_only`, `side_effects`)
-  - `format?: 'canonical' | 'openai' | 'anthropic' | 'gemini' | 'mcp'`
+  - `format?: 'canonical' | 'openai' | 'test-provider' | 'gemini' | 'mcp'`
 - **Response**: `200 OK` with list of tools.
 
 ### 18.2 `GET /internal/v1/tools/:toolId`
@@ -948,7 +948,7 @@ Standard health and readiness probes.
 ```
 ┌────────────────────────────────────────────────────────┐
 │               External MCP Clients                     │
-│        (Claude Desktop, Cursor, External Agents)       │
+│        (external desktop client, Cursor, External Agents)       │
 └───────────────────────────┬────────────────────────────┘
                             │ MCP Wire Protocol (Streamable HTTP / stdio / legacy SSE)
                             ▼

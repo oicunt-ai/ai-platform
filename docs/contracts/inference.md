@@ -61,7 +61,7 @@ Inference isolates the mechanics of runtime inference execution—including requ
                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │                   Provider Adapter Anti-Corruption Layer               │
-│               Anthropic • OpenAI • Google Gemini • Bedrock             │
+│               upstream provider • OpenAI • Google Gemini • Bedrock             │
 │                  (and Future Internal Inference Pools)                 │
 └────────────────────────────────────────────────────────────────────────┘
 ```
@@ -144,7 +144,7 @@ The Inference Service strictly **does NOT** own:
 
 1. **NO Model Catalog or Registration Authority**: Inference does **not** store or manage model definitions, versions, pricing tables, or capability flags. These belong exclusively to the **Model Registry**.
 2. **NO Model Selection or Routing**: Inference does **not** choose which canonical model to invoke, nor does it decide routing strategy. Resolution metadata is supplied by the Orchestrator via the Registry.
-3. **NO Provider SDKs, Wire Formats, or Credentials**: Inference **never** imports vendor SDKs (`@anthropic-ai/sdk`, `openai`, `@google/genai`) and **never** manages provider API keys, tokens, or network sockets. Provider communication is strictly delegated to the **Model Gateway**.
+3. **NO Provider SDKs, Wire Formats, or Credentials**: Inference **never** imports vendor SDKs (`a vendor SDK`, `openai`, `@google/genai`) and **never** manages provider API keys, tokens, or network sockets. Provider communication is strictly delegated to the **Model Gateway**.
 4. **NO Provider-Level Retries, Circuit Breakers, or Fallback**: Inference does **not** implement circuit breakers across provider targets or retry vendor 429/503 errors across fallback targets. Egress resilience belongs solely to the **Model Gateway**.
 5. **NO Conversational Context or History Management**: Inference does **not** manage multi-turn chat sessions, conversation threads, or token window truncation. Conversational history assembly belongs to the **AI Orchestrator** and future `services/memory`.
 6. **NO RAG, Knowledge Retrieval, or Document Processing**: Inference does **not** query vector databases or assemble retrieved context chunks (owned by `services/knowledge` and `services/embeddings`).
@@ -254,7 +254,7 @@ export interface InferenceExecutionRequest {
   readonly conversationId?: string | undefined;
 
   /**
-   * Canonical model identifier (e.g. 'claude-sonnet', 'gpt-4o', 'gemini-pro').
+   * Canonical model identifier (e.g. 'oicunt.model.catalog-alpha', 'provider-model-beta', 'provider-model-gamma').
    * Invariant: Must match a registered OICUNT canonical model identity.
    */
   readonly canonicalModelId: CanonicalModelId;
@@ -410,7 +410,7 @@ X-Correlation-ID: corr_7f1c9d24-8b3e-4a67-9c12-3e4f5a6b7c8d
   "success": true,
   "data": {
     "completionId": "cmpl_01HZX876543210ABCDEF",
-    "model": "claude-sonnet",
+    "model": "oicunt.model.catalog-alpha",
     "version": "v1.0.0",
     "effort": "medium",
     "message": {
@@ -639,7 +639,7 @@ export abstract class InferenceError extends Error {
 
 ### 8.3 Reasoning Privacy & Chain-of-Thought Containment
 
-- Reasoning models (e.g. Claude 3.7 Sonnet with extended thinking, OpenAI o1/o3-mini, Gemini 2.0 Flash Thinking) produce internal reasoning deltas (`thinking` parts or events).
+- Reasoning models (e.g. a reasoning-capable catalog model with extended thinking, OpenAI o1/o3-mini, Gemini 2.0 Flash Thinking) produce internal reasoning deltas (`thinking` parts or events).
 - The `InferenceReasoningPrivacyPolicy` governs runtime exposure:
   - **`exposeReasoning: false` (Default for public/unprivileged callers)**: Inference redacts or strips all `thinking` content parts from unary assistant messages and filters out all `thinking` events from streaming output.
   - **`redactThinkingInLogs: true` (Strict platform default)**: Thinking text is never written to structured log payloads at INFO or higher levels.
@@ -670,7 +670,7 @@ The relationship between Inference and Model Gateway is strictly defined by an o
 
 ### 9.1 Boundary Rules
 
-1. **Zero Direct Provider Sockets**: Inference **never** establishes HTTP or gRPC connections to Anthropic, OpenAI, Google, AWS Bedrock, or any external vendor.
+1. **Zero Direct Provider Sockets**: Inference **never** establishes HTTP or gRPC connections to upstream provider, OpenAI, Google, AWS Bedrock, or any external vendor.
 2. **Zero Provider Secrets**: Inference does **not** load or access provider API keys or cloud credentials.
 3. **Zero Duplicate Resilience**: Inference **must not** implement circuit breakers across provider targets or execute target-level retry loops. These are solely the responsibility of the Model Gateway.
 4. **Decoupled From Target Routing**: Inference is completely decoupled from Gateway target routing. Model Gateway remains solely and authoritatively responsible for target selection, routing policies, in-target retries, fallback sequencing, and circuit breakers. Inference does not evaluate or configure routing; any target resolution metadata (`eligibleTargets`, `routingPolicy`) forwarded from Model Registry is treated as opaque pass-through data to Model Gateway.
@@ -683,22 +683,22 @@ The relationship between Inference and Model Gateway is strictly defined by an o
 
 Inference participates in distributed tracing using `@oicunt-ai/observability`. It starts an `inference.execution` span as a child of the Orchestrator's `orchestrator.chat_turn` span.
 
-| Span Attribute                     | Type    | Description                                          | Example                    |
-| :--------------------------------- | :------ | :--------------------------------------------------- | :------------------------- |
-| `oicunt.service`                   | string  | Originating service name                             | `inference`                |
-| `oicunt.canonical_model`           | string  | User-selected canonical model ID                     | `claude-sonnet`            |
-| `oicunt.model_version`             | string  | Resolved semantic model version                      | `v1.0.0`                   |
-| `oicunt.effort`                    | string  | Reasoning effort applied                             | `medium`                   |
-| `oicunt.stream`                    | boolean | Whether execution was streaming                      | `true`                     |
-| `oicunt.correlation_id`            | string  | Distributed correlation ID                           | `corr_7f1c9d24...`         |
-| `oicunt.request_id`                | string  | Request tracking ID                                  | `req_4f1c9d24...`          |
-| `oicunt.inference.ttft_ms`         | number  | Time-to-first-token in milliseconds                  | `112`                      |
-| `oicunt.inference.duration_ms`     | number  | Total execution duration                             | `420`                      |
-| `oicunt.inference.target_executed` | string  | Provider target executed (internal telemetry only)   | `anthropic-sonnet-primary` |
-| `oicunt.provider`                  | string  | Upstream provider category (internal telemetry only) | `anthropic`                |
-| `gen_ai.usage.prompt_tokens`       | number  | Input tokens consumed                                | `142`                      |
-| `gen_ai.usage.completion_tokens`   | number  | Output tokens generated                              | `56`                       |
-| `gen_ai.usage.total_tokens`        | number  | Total tokens consumed                                | `198`                      |
+| Span Attribute                     | Type    | Description                                          | Example                      |
+| :--------------------------------- | :------ | :--------------------------------------------------- | :--------------------------- |
+| `oicunt.service`                   | string  | Originating service name                             | `inference`                  |
+| `oicunt.canonical_model`           | string  | User-selected canonical model ID                     | `oicunt.model.catalog-alpha` |
+| `oicunt.model_version`             | string  | Resolved semantic model version                      | `v1.0.0`                     |
+| `oicunt.effort`                    | string  | Reasoning effort applied                             | `medium`                     |
+| `oicunt.stream`                    | boolean | Whether execution was streaming                      | `true`                       |
+| `oicunt.correlation_id`            | string  | Distributed correlation ID                           | `corr_7f1c9d24...`           |
+| `oicunt.request_id`                | string  | Request tracking ID                                  | `req_4f1c9d24...`            |
+| `oicunt.inference.ttft_ms`         | number  | Time-to-first-token in milliseconds                  | `112`                        |
+| `oicunt.inference.duration_ms`     | number  | Total execution duration                             | `420`                        |
+| `oicunt.inference.target_executed` | string  | Provider target executed (internal telemetry only)   | `provider-a-primary`         |
+| `oicunt.provider`                  | string  | Upstream provider category (internal telemetry only) | `test-provider`              |
+| `gen_ai.usage.prompt_tokens`       | number  | Input tokens consumed                                | `142`                        |
+| `gen_ai.usage.completion_tokens`   | number  | Output tokens generated                              | `56`                         |
+| `gen_ai.usage.total_tokens`        | number  | Total tokens consumed                                | `198`                        |
 
 > [!NOTE]
 > **Observability Isolation**: The target executed (`oicunt.inference.target_executed`) and upstream provider category (`oicunt.provider`) are captured strictly within internal distributed tracing spans and system logs for engineering diagnostics and auditability. They are **never** exposed in the public `InferenceExecutionResponse` payload to ensure vendor neutrality and prevent provider leakage.

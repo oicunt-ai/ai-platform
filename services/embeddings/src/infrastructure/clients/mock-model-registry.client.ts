@@ -39,8 +39,8 @@ export class MockModelRegistryClient implements ModelRegistryPort {
   private registerDefaultModels(): void {
     const now = new Date().toISOString();
 
-    this.models.set('oicunt.model.embedding', {
-      canonicalModelId: 'oicunt.model.embedding',
+    this.models.set('oicunt.model.catalog-embedding', {
+      canonicalModelId: 'oicunt.model.catalog-embedding',
       version: '1.0.0',
       displayName: 'OICUNT General Embedding',
       description: 'Default general-purpose dense vector embedding model',
@@ -74,8 +74,8 @@ export class MockModelRegistryClient implements ModelRegistryPort {
       },
     });
 
-    this.models.set('oicunt.model.embedding.fast', {
-      canonicalModelId: 'oicunt.model.embedding.fast',
+    this.models.set('oicunt.model.catalog-embedding.fast', {
+      canonicalModelId: 'oicunt.model.catalog-embedding.fast',
       version: '1.0.0',
       displayName: 'OICUNT Fast Embedding',
       description: 'Low-latency high-throughput embedding model',
@@ -109,8 +109,8 @@ export class MockModelRegistryClient implements ModelRegistryPort {
       },
     });
 
-    this.models.set('oicunt.model.embedding.code', {
-      canonicalModelId: 'oicunt.model.embedding.code',
+    this.models.set('oicunt.model.catalog-embedding.code', {
+      canonicalModelId: 'oicunt.model.catalog-embedding.code',
       version: '1.0.0',
       displayName: 'OICUNT Code Embedding',
       description: 'Codebase and technical documentation embedding model',
@@ -219,7 +219,7 @@ export class MockModelRegistryClient implements ModelRegistryPort {
     this.models.set('chat-model-gpt4', {
       canonicalModelId: 'chat-model-gpt4',
       version: '1.0.0',
-      displayName: 'GPT-4o Chat',
+      displayName: 'Catalog Model Beta Chat',
       description: 'Text completion and chat model (non-embedding)',
       modalities: ['text'],
       status: 'available',
@@ -233,7 +233,7 @@ export class MockModelRegistryClient implements ModelRegistryPort {
         {
           targetId: 'tgt-gpt4-1',
           provider: 'openai',
-          upstreamModelId: 'gpt-4o',
+          upstreamModelId: 'provider-model-beta',
           priority: 1,
           weight: 100,
           supportsStreaming: true,

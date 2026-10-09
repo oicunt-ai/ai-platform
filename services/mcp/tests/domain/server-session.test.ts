@@ -8,7 +8,7 @@ describe('McpServerGatewaySession Domain Entity', () => {
     userId: 'user-456',
     actorId: 'actor-789',
     roles: ['admin', 'operator'],
-    clientInfo: { name: 'claude-desktop', version: '1.0.0' },
+    clientInfo: { name: 'test-desktop-client', version: '1.0.0' },
     hardExpiresAt: 1000 + 86400000,
     now: 1000,
   };
@@ -21,7 +21,7 @@ describe('McpServerGatewaySession Domain Entity', () => {
     expect(session.userId).toBe('user-456');
     expect(session.actorId).toBe('actor-789');
     expect(session.roles).toEqual(['admin', 'operator']);
-    expect(session.clientInfo.name).toBe('claude-desktop');
+    expect(session.clientInfo.name).toBe('test-desktop-client');
     expect(session.status).toBe('uninitialized');
     expect(session.createdAt).toBe(1000);
     expect(session.lastActivityAt).toBe(1000);

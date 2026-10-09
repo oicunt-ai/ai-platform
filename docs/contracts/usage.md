@@ -3,13 +3,13 @@
 **Document Version**: 1.0.0  
 **Status**: Authoritative Architectural Contract  
 **Classification**: Engineering Architecture Standard  
-**Capability Location**: Platform Capability / `services/usage`
+**Capability Location**: Platform Capability / `platform/services/usage` (company platform repository; the former AI Platform `services/usage` duplicate was removed — AI Platform only publishes usage events)
 
 ---
 
 ## 1. Executive Summary & Purpose
 
-The **Usage & Metering Service** (`services/usage`) is the authoritative, centralized **measurement, deduplication, persistence, aggregation, and query boundary** for operational consumption across the entire OICUNT platform. Its sole responsibility is to accurately record **what happened, when it happened, who caused it, and what resources were consumed**.
+The **Usage & Metering Service** (`platform/services/usage` in the company platform repository) is the authoritative, centralized **measurement, deduplication, persistence, aggregation, and query boundary** for operational consumption across the entire OICUNT platform. Its sole responsibility is to accurately record **what happened, when it happened, who caused it, and what resources were consumed**.
 
 Usage metering is a foundational, company-wide platform capability. In modern AI platforms, consumption encompasses heterogeneous, high-velocity dimensions: large language model tokens (input, output, cached, and reasoning tokens), vector embedding generation, sandboxed tool compute durations, autonomous agent run iterations, and external Model Context Protocol (MCP) interactions.
 
@@ -294,7 +294,7 @@ Because asynchronous message brokers (RabbitMQ) and distributed network protocol
 
 1. Every usage event carries a deterministic `idempotencyKey`.
 2. The idempotency key must be derived deterministically from the discrete runtime execution identity:
-   - **Model Completion**: `mod_${requestId}_${dispatchAttempt}`
+   - **Model Completion**: `model.completion:${completionId}`
    - **Tool Execution**: `tool_${callId}`
    - **Embeddings Batch**: `emb_${batchId}`
    - **Agent Step**: `agent_${runId}_step_${stepNumber}`
@@ -662,7 +662,7 @@ Every runtime subsystem integrates with the Usage Service by emitting a standard
 - **Resource ID**: Canonical model ID (e.g. `oicunt.model.catalog-alpha`)
 - **Measurements**: `tokens.input`, `tokens.output`, `tokens.total`, `tokens.cached_input`, `tokens.reasoning`, `duration.total_ms`, `units.requests = 1`.
 - **Dimensions**: `provider`, `model_tier`, `finish_reason`.
-- **Deduplication Key**: `mod_${requestId}_${dispatchAttempt}`
+- **Deduplication Key**: `model.completion:${completionId}`
 
 ### 13.2 Embeddings Service (`services/embeddings`)
 
@@ -761,7 +761,7 @@ To maintain end-to-end auditability and prevent duplicate measurement:
 When implementation is approved in future phases, the following artifacts will be constructed:
 
 1. **`packages/usage-types`**: Pure TypeScript interfaces for `UsageEvent`, `UsageMeasurements`, and query DTOs.
-2. **`services/usage`**: Hexagonal architecture microservice scafolded from `templates/service`.
+2. **`platform/services/usage`**: Hexagonal architecture microservice in the company platform repository (authoritative Usage service; AI Platform does not run a duplicate — it publishes usage events).
 3. **PostgreSQL Migrations**: `oicunt_usage` schema, `usage_events` (with recommended monthly range partitioning), and rollup tables.
 4. **RabbitMQ Ingestion Worker**: High-throughput AMQP consumer with at-least-once deduplication and DLQ routing.
 5. **Runtime Service Adapters**: Non-blocking usage emission helpers in `model-gateway`, `tools`, `embeddings`, `agents`, and `mcp`.

@@ -32,7 +32,7 @@ describe('GenerateEmbeddingsUseCase', () => {
     const inputs = ['first text document', 'second text document', 'third text document'];
     const result = await useCase.execute(
       {
-        model: 'oicunt.model.embedding',
+        model: 'oicunt.model.catalog-embedding',
         inputs,
       },
       {
@@ -43,7 +43,7 @@ describe('GenerateEmbeddingsUseCase', () => {
       },
     );
 
-    expect(result.model).toBe('oicunt.model.embedding');
+    expect(result.model).toBe('oicunt.model.catalog-embedding');
     expect(result.modelVersion).toBe('1.0.0');
     expect(result.dimensions).toBe(1536);
     expect(result.embeddings).toHaveLength(3);
@@ -83,7 +83,7 @@ describe('GenerateEmbeddingsUseCase', () => {
     await expect(
       useCase.execute(
         {
-          model: 'oicunt.model.embedding',
+          model: 'oicunt.model.catalog-embedding',
           inputs: [],
         },
         {
@@ -99,7 +99,7 @@ describe('GenerateEmbeddingsUseCase', () => {
     await expect(
       useCase.execute(
         {
-          model: 'oicunt.model.embedding',
+          model: 'oicunt.model.catalog-embedding',
           inputs: ['valid item', '   '],
         },
         {
@@ -186,7 +186,7 @@ describe('GenerateEmbeddingsUseCase', () => {
     await expect(
       useCase.execute(
         {
-          model: 'oicunt.model.embedding',
+          model: 'oicunt.model.catalog-embedding',
           inputs: ['sample text'],
         },
         {
@@ -206,7 +206,7 @@ describe('GenerateEmbeddingsUseCase', () => {
     await expect(
       useCase.execute(
         {
-          model: 'oicunt.model.embedding',
+          model: 'oicunt.model.catalog-embedding',
           inputs: ['sample text'],
         },
         {
@@ -226,7 +226,7 @@ describe('GenerateEmbeddingsUseCase', () => {
     await expect(
       useCase.execute(
         {
-          model: 'oicunt.model.embedding',
+          model: 'oicunt.model.catalog-embedding',
           inputs: ['sample text'],
         },
         {
@@ -244,7 +244,7 @@ describe('GenerateEmbeddingsUseCase', () => {
     await expect(
       useCase.execute(
         {
-          model: 'oicunt.model.embedding',
+          model: 'oicunt.model.catalog-embedding',
           inputs: ['first input', 'second input'],
         },
         {

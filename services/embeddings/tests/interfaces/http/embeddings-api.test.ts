@@ -56,7 +56,7 @@ describe('Embeddings Service HTTP API', () => {
         'X-Correlation-ID': 'corr-abc-123',
       },
       body: JSON.stringify({
-        model: 'oicunt.model.embedding',
+        model: 'oicunt.model.catalog-embedding',
         inputs: ['first test text', 'second test text'],
       }),
     });
@@ -80,7 +80,7 @@ describe('Embeddings Service HTTP API', () => {
     };
 
     expect(body.success).toBe(true);
-    expect(body.data.model).toBe('oicunt.model.embedding');
+    expect(body.data.model).toBe('oicunt.model.catalog-embedding');
     expect(body.data.modelVersion).toBe('1.0.0');
     expect(body.data.dimensions).toBe(1536);
     expect(body.data.embeddings).toHaveLength(2);
@@ -103,7 +103,7 @@ describe('Embeddings Service HTTP API', () => {
         'X-Tenant-ID': 'tenant-test-01',
       },
       body: JSON.stringify({
-        model: 'oicunt.model.embedding',
+        model: 'oicunt.model.catalog-embedding',
         inputs: ['text'],
       }),
     });
@@ -122,7 +122,7 @@ describe('Embeddings Service HTTP API', () => {
         Authorization: `Bearer ${validToken}`,
       },
       body: JSON.stringify({
-        model: 'oicunt.model.embedding',
+        model: 'oicunt.model.catalog-embedding',
         inputs: ['text'],
       }),
     });
@@ -142,7 +142,7 @@ describe('Embeddings Service HTTP API', () => {
         'X-Tenant-ID': 'tenant-test-01',
       },
       body: JSON.stringify({
-        model: 'oicunt.model.embedding',
+        model: 'oicunt.model.catalog-embedding',
         inputs: [],
       }),
     });
@@ -162,7 +162,7 @@ describe('Embeddings Service HTTP API', () => {
         'X-Tenant-ID': 'tenant-test-01',
       },
       body: JSON.stringify({
-        model: 'oicunt.model.embedding',
+        model: 'oicunt.model.catalog-embedding',
         inputs: ['valid', '   '],
       }),
     });

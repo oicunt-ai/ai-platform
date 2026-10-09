@@ -1,5 +1,5 @@
 export interface GenerateEmbeddingsInputDto {
-  /** Canonical model identifier (e.g. 'oicunt.model.embedding', 'text-embedding-3-small') */
+  /** Canonical model identifier (e.g. 'oicunt.model.catalog-embedding', 'text-embedding-3-small') */
   readonly model: string;
   /** Non-empty array of raw input strings to embed */
   readonly inputs: readonly string[];

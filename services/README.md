@@ -20,8 +20,8 @@ Services within this repository own **AI-specific capabilities and infrastructur
 - **No Duplication**: The AI Platform must **never** duplicate company-wide services, authentication servers, billing engines, or external client gateways.
 - **Trusted Upstream Context**: AI services operate behind the platform perimeter. Inbound requests to AI services have already been authenticated by the company platform gateway. Identity headers (`X-User-ID`, `X-Tenant-ID`, `X-Correlation-ID`) are trusted authoritative metadata injected by the platform gateway.
 - **Database-Per-Service Rule**: Services must own their persistent data. Services never share a database or persistent datastore.
-- **Canonical Model Identifiers**: Services communicate using canonical OICUNT model IDs (`oicunt.model.*`) from `@oicunt-ai/model-types`. Raw upstream vendor model names (`gpt-4o`, `claude-3-5-sonnet`) are strictly prohibited in service logic.
-- **Zero Provider SDK Leaks**: Provider SDKs (OpenAI, Anthropic, Google) are strictly confined to `providers/`. Services never import upstream vendor SDKs.
+- **Canonical Model Identifiers**: Services communicate using canonical OICUNT model IDs (`oicunt.model.*`) from `@oicunt-ai/model-types`. Raw upstream vendor model names (`provider-model-beta`, `provider-model-alpha`) are strictly prohibited in service logic.
+- **Zero Provider SDK Leaks**: Provider SDKs (OpenAI, upstream provider, Google) are strictly confined to `providers/`. Services never import upstream vendor SDKs.
 
 ---
 

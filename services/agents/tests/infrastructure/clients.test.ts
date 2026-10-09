@@ -83,7 +83,7 @@ describe('HTTP Outbound Clients Integration', () => {
     const response = await client.execute({
       requestId: 'req_1',
       correlationId: 'corr_1',
-      canonicalModelId: 'claude-sonnet',
+      canonicalModelId: 'oicunt.model.catalog-alpha',
       messages: [{ role: 'user', content: 'Hi' }],
       deadlineMs: Date.now() + 10_000,
       tenantId: 'ten_1',

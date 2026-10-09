@@ -76,12 +76,14 @@ describe('Embeddings Domain Validation', () => {
   describe('validateModelModality', () => {
     it('passes when modalities include embedding', () => {
       expect(() =>
-        validateModelModality(['text', 'embedding'], 'oicunt.model.embedding'),
+        validateModelModality(['text', 'embedding'], 'oicunt.model.catalog-embedding'),
       ).not.toThrow();
     });
 
     it('rejects when modalities do not include embedding with UnsupportedCapabilityError', () => {
-      expect(() => validateModelModality(['text'], 'gpt-4o')).toThrow(UnsupportedCapabilityError);
+      expect(() => validateModelModality(['text'], 'provider-model-beta')).toThrow(
+        UnsupportedCapabilityError,
+      );
     });
   });
 

@@ -51,7 +51,7 @@ Knowledge isolates the mechanics of document ingestion, textual extraction, chun
                                                                  ▼
                                                   ┌──────────────────────────────┐
                                                   │      Provider Adapters       │
-                                                  │ Anthropic • Bedrock • OpenAI │
+                                                  │ upstream provider • Bedrock • OpenAI │
                                                   └──────────────────────────────┘
 ```
 

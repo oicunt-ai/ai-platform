@@ -111,9 +111,9 @@ The repository provides a canonical starter template in `templates/service` (`@o
 
 ## 5. AI-Specific Engineering Conventions
 
-1. **Use Canonical Model Identifiers**: Always use model identifiers from `@oicunt-ai/model-types` (e.g. `oicunt.model.general`). Raw upstream vendor names (`gpt-4o`, `claude-3-5-sonnet`) are strictly prohibited in application logic.
+1. **Use Canonical Model Identifiers**: Always use model identifiers from `@oicunt-ai/model-types` (e.g. `oicunt.model.catalog-alpha`). Raw upstream vendor names (`provider-model-beta`, `provider-model-alpha`) are strictly prohibited in application logic.
 2. **Normalized Requests & Responses**: Inter-service AI calls must exchange `NormalizedCompletionRequest` and `NormalizedCompletionData` from `@oicunt-ai/ai-types`.
-3. **No Provider SDK Leaks**: Provider SDKs (OpenAI, Anthropic, Google) are strictly confined to `providers/`. Never import `@anthropic-ai/sdk`, `openai`, or `@google/genai` in services or shared packages.
+3. **No Provider SDK Leaks**: Provider SDKs (OpenAI, upstream provider, Google) are strictly confined to `providers/`. Never import `a vendor SDK`, `openai`, or `@google/genai` in services or shared packages.
 4. **Zero-Trust Observability**: Record token counts, latency, and model metrics using `@oicunt-ai/observability`.
 5. **Database-Per-Service Rule**: Never share a database between services. Services own their persistent storage exclusively.
 6. **No Platform Duplication**: Do not build authentication, user management, billing, subscriptions, products, or usage tracking here. Those belong authoritatively in the company platform repository.

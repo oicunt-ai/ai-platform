@@ -24,7 +24,7 @@ describe('HTTP Infrastructure Clients', () => {
   describe('HttpModelRegistryClient', () => {
     it('resolves model successfully with correct headers', async () => {
       const mockResult = {
-        canonicalModelId: 'oicunt.model.embedding',
+        canonicalModelId: 'oicunt.model.catalog-embedding',
         version: '1.0.0',
         displayName: 'OICUNT Embedding',
         description: 'Test model',
@@ -72,17 +72,17 @@ describe('HTTP Infrastructure Clients', () => {
       });
 
       const result = await client.resolveModel({
-        canonicalModelId: 'oicunt.model.embedding',
+        canonicalModelId: 'oicunt.model.catalog-embedding',
         tenantId: 'tenant-123',
         correlationId: 'corr-xyz',
       });
 
-      expect(capturedUrl).toContain('/internal/v1/models/resolve/oicunt.model.embedding');
+      expect(capturedUrl).toContain('/internal/v1/models/resolve/oicunt.model.catalog-embedding');
       expect(capturedHeaders['X-Service-Name']).toBe('embeddings');
       expect(capturedHeaders['X-Correlation-ID']).toBe('corr-xyz');
       expect(capturedHeaders['X-Tenant-ID']).toBe('tenant-123');
       expect(capturedHeaders['Authorization']).toBe('Bearer internal-secret');
-      expect(result.canonicalModelId).toBe('oicunt.model.embedding');
+      expect(result.canonicalModelId).toBe('oicunt.model.catalog-embedding');
     });
 
     it('maps 404 to UnsupportedModelError', async () => {
@@ -139,7 +139,7 @@ describe('HTTP Infrastructure Clients', () => {
       const client = new HttpModelRegistryClient({ baseUrl: 'http://localhost:3001' });
       await expect(
         client.resolveModel({
-          canonicalModelId: 'oicunt.model.embedding',
+          canonicalModelId: 'oicunt.model.catalog-embedding',
           correlationId: 'corr-03',
         }),
       ).rejects.toThrow(ModelUnavailableError);
@@ -181,7 +181,7 @@ describe('HTTP Infrastructure Clients', () => {
       const result = await client.dispatchEmbeddings({
         requestId: 'req-01',
         correlationId: 'corr-01',
-        canonicalModelId: 'oicunt.model.embedding',
+        canonicalModelId: 'oicunt.model.catalog-embedding',
         version: '1.0.0',
         inputs: ['hello', 'world'],
         dimensions: 3,
@@ -198,7 +198,7 @@ describe('HTTP Infrastructure Clients', () => {
       });
 
       expect(capturedUrl).toContain('/internal/v1/models/dispatch');
-      expect(capturedBody['canonicalModelId']).toBe('oicunt.model.embedding');
+      expect(capturedBody['canonicalModelId']).toBe('oicunt.model.catalog-embedding');
       expect(result.vectors).toHaveLength(2);
       expect(result.usage.promptTokens).toBe(10);
       expect(result.targetUsed).toBe('tgt-1');
@@ -219,7 +219,7 @@ describe('HTTP Infrastructure Clients', () => {
         client.dispatchEmbeddings({
           requestId: 'req-02',
           correlationId: 'corr-02',
-          canonicalModelId: 'oicunt.model.embedding',
+          canonicalModelId: 'oicunt.model.catalog-embedding',
           version: '1.0.0',
           inputs: ['hello'],
           dimensions: 1536,
@@ -244,7 +244,7 @@ describe('HTTP Infrastructure Clients', () => {
         client.dispatchEmbeddings({
           requestId: 'req-03',
           correlationId: 'corr-03',
-          canonicalModelId: 'oicunt.model.embedding',
+          canonicalModelId: 'oicunt.model.catalog-embedding',
           version: '1.0.0',
           inputs: ['hello'],
           dimensions: 1536,
@@ -269,7 +269,7 @@ describe('HTTP Infrastructure Clients', () => {
         client.dispatchEmbeddings({
           requestId: 'req-04',
           correlationId: 'corr-04',
-          canonicalModelId: 'oicunt.model.embedding',
+          canonicalModelId: 'oicunt.model.catalog-embedding',
           version: '1.0.0',
           inputs: ['hello'],
           dimensions: 1536,

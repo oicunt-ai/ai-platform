@@ -29,7 +29,7 @@ The OICUNT enterprise separates concerns between two primary repositories:
                  │ Outbound Provider Boundary
                  ▼
 ┌─────────────────────────────────┐
-│    Upstream Model Providers     │  (Anthropic, OpenAI, Google Gemini, Bedrock)
+│    Upstream Model Providers     │  (upstream provider, OpenAI, Google Gemini, Bedrock)
 └─────────────────────────────────┘
 ```
 

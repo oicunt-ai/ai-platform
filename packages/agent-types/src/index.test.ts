@@ -17,12 +17,12 @@ describe('@oicunt-ai/agent-types', () => {
       name: 'Data Analyst Agent',
       description: 'Analyzes structured business datasets',
       systemPrompt: 'You are an expert data analyst.',
-      model: 'oicunt.model.reasoning',
+      model: 'oicunt.model.catalog-gamma',
       allowedTools: ['sql_query', 'chart_generator'],
       maxSteps: 10,
     };
     expect(config.id).toBe('analyst-agent');
-    expect(config.model).toBe('oicunt.model.reasoning');
+    expect(config.model).toBe('oicunt.model.catalog-gamma');
     expect(config.maxSteps).toBe(10);
   });
 

@@ -56,7 +56,7 @@ While the **AI Orchestrator** governs single-turn conversational coordination, p
                              └──────────────┘                    ▼
                                                   ┌──────────────────────────────┐
                                                   │      Provider Adapters       │
-                                                  │ Anthropic • Bedrock • OpenAI │
+                                                  │ upstream provider • Bedrock • OpenAI │
                                                   └──────────────────────────────┘
 ```
 
@@ -167,7 +167,7 @@ sequenceDiagram
 
 ### 2.2 What Agents Does NOT Own (Explicit Non-Responsibilities)
 
-1. **NO Direct Provider Calls or SDKs**: The Agents Service **never** communicates with Anthropic, OpenAI, Google Gemini, or AWS Bedrock APIs, and never imports vendor SDKs.
+1. **NO Direct Provider Calls or SDKs**: The Agents Service **never** communicates with upstream provider, OpenAI, Google Gemini, or AWS Bedrock APIs, and never imports vendor SDKs.
 2. **NO Model Routing or Target Resolution**: Resolving canonical models to provider endpoints and managing circuit breakers belongs to **Model Registry** and **Model Gateway**.
 3. **NO Inference Lifecycle Management**: Enforcing TTFT metrics, inference privacy filters, and model streaming normalization belongs to the **Inference Service**.
 4. **NO Tool Execution or Sandboxing**: Agents **never** executes shell scripts, runs code interpreters, initiates database writes, or calls external APIs directly. All actions are delegated to the **Tools Service**.
@@ -822,7 +822,7 @@ The Agents Service **never** calls LLM providers directly and **never** calls th
   {
     "requestId": "req_agent_step_1",
     "correlationId": "7f1c9d24-8b3e-4a67-9c12-3e4f5a6b7c8d",
-    "canonicalModelId": "claude-sonnet",
+    "canonicalModelId": "oicunt.model.catalog-alpha",
     "messages": [ ... ],
     "tools": [ "oicunt.tool.document_extract", "oicunt.tool.calculator" ],
     "stream": false,

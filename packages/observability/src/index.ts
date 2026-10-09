@@ -4,7 +4,7 @@ import type { TokenUsage } from '@oicunt-ai/model-types';
  * OpenTelemetry GenAI semantic convention attributes.
  */
 export interface GenAiSpanAttributes {
-  /** The generative AI product/vendor or framework name (e.g. 'anthropic', 'openai') */
+  /** The generative AI product/vendor or framework name (e.g. 'test-provider', 'openai') */
   readonly 'gen_ai.system'?: string;
   /** The model identifier requested by the client */
   readonly 'gen_ai.request.model'?: string;

@@ -25,7 +25,7 @@ MCP fulfills two distinct operational roles within the enterprise architecture:
 ```
 ┌────────────────────────────────────────────────────────────────────────────────────────┐
 │                                External MCP Ecosystem                                  │
-│       External MCP Clients (Claude Desktop, IDEs)  │  External MCP Servers (GitHub, DB)│
+│       External MCP Clients (external desktop client, IDEs)  │  External MCP Servers (GitHub, DB)│
 └──────────────────────────────────────┬─────────────────────────────────▲───────────────┘
                                        │ 1. Outbound Calls               │ 2. Inbound
                                        │    (Streamable HTTP / stdio)    │    Transport
@@ -85,7 +85,7 @@ MCP fulfills two distinct operational roles within the enterprise architecture:
 3. **NO Confirmation Token Generation or Verification**: Generating and signing cryptographic confirmation tokens (Ed25519) belongs exclusively to the **Tools Service**. MCP only transports confirmation tokens provided in requests.
 4. **NO LLM Model Execution or Inference**: MCP never invokes model providers, never routes prompt completions, and never evaluates generative neural networks. Model execution belongs strictly to **Inference** and **Model Gateway**.
 5. **NO Conversational Turn Loop or Agent State**: MCP does not maintain chat turn loops, context windows, message histories, or autonomous agent state machines. These belong to **AI Orchestrator**, **Memory**, and **Agents**.
-6. **NO Direct Upstream Provider Access**: MCP never stores OpenAI, Anthropic, Gemini, or Bedrock API keys and never communicates with upstream AI model providers.
+6. **NO Direct Upstream Provider Access**: MCP never stores OpenAI, upstream provider, Gemini, or Bedrock API keys and never communicates with upstream AI model providers.
 7. **NO Document Indexing or Vector Search**: Parsing document files, managing vector databases, or calculating text embeddings belong to **Knowledge** and **Embeddings**.
 8. **NO Company-Wide User Authentication, Billing, or Usage Accounting**: User identity (AuthN), billing accounts, subscription tiers, and payment processing belong to the **Company Platform** (`platform`).
 9. **NO Arbitrary Remote Code Execution (RCE)**: MCP never provides general-purpose remote execution or container breakout mechanisms.
@@ -331,7 +331,7 @@ The **OICUNT MCP Server Gateway** enables external MCP-compliant clients (such a
 ### 7.1 OICUNT MCP Server Boundary & Cardinal Execution Rule
 
 ```
-External MCP Client (e.g. IDE / Claude Desktop)
+External MCP Client (e.g. IDE / external desktop client)
         │
         │ 1. MCP JSON-RPC 2.0 (Streamable HTTP)
         ▼

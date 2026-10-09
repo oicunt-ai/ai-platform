@@ -26,7 +26,7 @@ describe('@oicunt-ai/ai-types', () => {
   it('constructs a valid NormalizedCompletionData payload', () => {
     const completion: NormalizedCompletionData = {
       completionId: 'cmp_12345',
-      model: 'oicunt.model.general',
+      model: 'oicunt.model.catalog-alpha',
       message: {
         role: 'assistant',
         content: 'Processed successfully.',

@@ -18,7 +18,7 @@ export const BUILT_IN_AGENTS: readonly { agent: Agent; version: AgentVersion }[]
       version: '1.0.0',
       systemInstructions:
         'You are the OICUNT General Assistant Agent. Analyze the user goal, form a clear step-by-step plan, use available tools where appropriate, and provide a comprehensive final answer.',
-      defaultModel: 'claude-sonnet',
+      defaultModel: 'oicunt.model.catalog-alpha',
       defaultEffort: 'medium',
       allowedTools: ['*'],
       defaultBudget: {
@@ -58,7 +58,7 @@ export const BUILT_IN_AGENTS: readonly { agent: Agent; version: AgentVersion }[]
       version: '1.0.0',
       systemInstructions:
         'You are the OICUNT Research & Knowledge Agent. Your objective is thorough investigation, verifying facts from knowledge collections and search tools, and synthesizing grounded, citation-rich summaries.',
-      defaultModel: 'claude-sonnet',
+      defaultModel: 'oicunt.model.catalog-alpha',
       defaultEffort: 'medium',
       allowedTools: [
         'oicunt.tool.knowledge_search',
@@ -102,7 +102,7 @@ export const BUILT_IN_AGENTS: readonly { agent: Agent; version: AgentVersion }[]
       version: '1.0.0',
       systemInstructions:
         'You are the OICUNT Quantitative Data Analyst Agent. Solve analytical challenges by querying structured datasets, running deterministic calculations, and delivering concise metric summaries.',
-      defaultModel: 'claude-sonnet',
+      defaultModel: 'oicunt.model.catalog-alpha',
       defaultEffort: 'medium',
       allowedTools: [
         'oicunt.tool.calculator',

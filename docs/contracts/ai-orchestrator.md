@@ -19,7 +19,7 @@ It provides high-level AI interaction orchestration: prompt composition, multi-t
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ 0. GET /internal/v1/catalog (Discovery)
                                     │ 1. POST /internal/v1/orchestrator/chat
-                                    │    (model: 'claude-sonnet', effort: 'medium')
+                                    │    (model: 'oicunt.model.catalog-alpha', effort: 'medium')
                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │                            AI Orchestrator                             │
@@ -52,7 +52,7 @@ It provides high-level AI interaction orchestration: prompt composition, multi-t
                                     ▼
 ┌────────────────────────────────────────────────────────────────────────┐
 │                   Provider Adapter Anti-Corruption Layer               │
-│               Anthropic • OpenAI • Google Gemini • Bedrock             │
+│               upstream provider • OpenAI • Google Gemini • Bedrock             │
 └───────────────────────────────────┬────────────────────────────────────┘
                                     │ 6. Vendor Wire Protocol / SDK
                                     ▼
@@ -85,11 +85,11 @@ sequenceDiagram
     participant Adapter as Provider Adapter
     participant Upstream as Upstream Model Provider
 
-    User->>BILLY: Enters prompt (Selects 'Claude Sonnet', Effort: 'medium')
-    BILLY->>APIGW: POST /api/v1/ai/completions (model: "claude-sonnet", effort: "medium")
+    User->>BILLY: Enters prompt (Selects 'Catalog Model Alpha', Effort: 'medium')
+    BILLY->>APIGW: POST /api/v1/ai/completions (model: "oicunt.model.catalog-alpha", effort: "medium")
     APIGW->>Orch: POST /internal/v1/orchestrator/chat (Headers: X-User-ID, X-Tenant-ID, X-Correlation-ID)
     Note over Orch: Validates messages, estimates context window,<br/>preserves user-selected canonical model identity
-    Orch->>Reg: GET /internal/v1/models/resolve/claude-sonnet?effort=medium
+    Orch->>Reg: GET /internal/v1/models/resolve/oicunt.model.catalog-alpha?effort=medium
     Note over Reg: Validates canonical model & effort capability<br/>Resolves eligible provider targets & limits
     Reg-->>Orch: 200 OK (ModelResolutionResponse)
     Note over Orch: Assembles InferenceExecutionRequest<br/>Calculates turn deadline & timeout
@@ -119,7 +119,7 @@ sequenceDiagram
 The AI Orchestrator authoritatively owns:
 
 1. **Product Execution Ingress**: Serving as the unified AI execution entrypoint for BILLY and product services via `POST /internal/v1/orchestrator/chat`.
-2. **Model Identity & Effort Preservation**: Retaining the user's selected canonical model identity (`claude-sonnet`, `claude-opus`, `gpt-4o`, `gemini-pro`, etc.) and validated reasoning effort (`low`, `medium`, `high`) throughout the entire execution pipeline without arbitrary model replacement.
+2. **Model Identity & Effort Preservation**: Retaining the user's selected `oicunt.model.<catalog-slug>` identity and validated reasoning effort throughout the entire execution pipeline without arbitrary model replacement.
 3. **Model Registry Resolution**: Querying the Model Registry control plane (`GET /internal/v1/models/resolve/:id`) to retrieve approved target bindings, token bounds, and routing policies before execution.
 4. **Resolution Caching**: Maintaining a local, short-lived, in-memory L1 resolution cache (TTL: 30–60 seconds) to minimize control-plane latency on rapid consecutive turns.
 5. **Preflight Context Window Estimation**: Performing bounded preflight context-window estimation against limits provided by Model Registry (`contextWindowTokens`, `maxOutputTokens`) without importing provider-specific tokenizers, rejecting blatantly oversized dispatches early while leaving runtime execution to Inference and actual execution authority to the Model Gateway.
@@ -134,10 +134,10 @@ The AI Orchestrator authoritatively owns:
 
 The AI Orchestrator strictly **does NOT** own:
 
-1. **NO Direct Provider Calls**: The Orchestrator **never** initiates network connections to third-party model providers (Anthropic, OpenAI, Google, AWS Bedrock).
+1. **NO Direct Provider Calls**: The Orchestrator **never** initiates network connections to third-party model providers (upstream provider, OpenAI, Google, AWS Bedrock).
 2. **NO Direct Model Gateway Calls**: The Orchestrator does **NOT** call the Model Gateway directly. The Model Gateway sits strictly behind the Inference Service in the execution pipeline (`Orchestrator → Inference → Model Gateway`).
 3. **NO Provider Credentials**: The Orchestrator **never** loads, stores, or manages provider API keys, tokens, or IAM credentials.
-4. **NO Provider SDKs or Tokenizers**: The Orchestrator **never** imports `@anthropic-ai/sdk`, `openai`, `@google/genai`, `@aws-sdk/client-bedrock-runtime`, or vendor-specific tokenizer libraries (`tiktoken`, etc.). Context window estimation is approximate unless an OICUNT-owned tokenizer is available, and must not leak vendor implementation details.
+4. **NO Provider SDKs or Tokenizers**: The Orchestrator **never** imports `a vendor SDK`, `openai`, `@google/genai`, `@aws-sdk/client-bedrock-runtime`, or vendor-specific tokenizer libraries (`tiktoken`, etc.). Context window estimation is approximate unless an OICUNT-owned tokenizer is available, and must not leak vendor implementation details.
 5. **NO Model Catalog Authority**: The Orchestrator **never** defines, persists, or mutates canonical model definitions, semantic versions, pricing tables, or capability flags (owned solely by Model Registry).
 6. **NO Provider Target Routing or Circuit Breaking**: The Orchestrator **never** tracks provider target health, calculates circuit breaker error rates, executes target retries, or determines vendor failover (owned solely by Model Gateway behind Inference).
 7. **NO Runtime Hooks or TTFT Tracking**: The Orchestrator does not execute inference runtime hooks or measure raw time-to-first-token (TTFT) metrics (owned by Inference Service).
@@ -202,7 +202,7 @@ import type { ChatMessage } from '@oicunt-ai/ai-types';
  */
 export interface OrchestratorChatRequest {
   /**
-   * The user-selected canonical model identity (e.g. 'claude-sonnet', 'claude-opus', 'gpt-4o', 'gemini-pro').
+   * The user-selected OICUNT catalog model identity (e.g. 'oicunt.model.catalog-alpha').
    * Required. The Orchestrator will resolve this model through the Model Registry and preserve its identity.
    */
   readonly model: CanonicalModelId;
@@ -358,7 +358,7 @@ event: token
 data: {"delta":" of France is Paris."}
 
 event: finish
-data: {"finishReason":"stop","usage":{"promptTokens":18,"completionTokens":7,"totalTokens":25},"completionId":"compl_8a7b6c5d","model":"claude-sonnet","version":"v1.0.0"}
+data: {"finishReason":"stop","usage":{"promptTokens":18,"completionTokens":7,"totalTokens":25},"completionId":"compl_8a7b6c5d","model":"oicunt.model.catalog-alpha","version":"v1.0.0"}
 ```
 
 ---
@@ -369,13 +369,13 @@ data: {"finishReason":"stop","usage":{"promptTokens":18,"completionTokens":7,"to
 
 > [!IMPORTANT]
 > **The AI Orchestrator must NEVER silently swap or replace the user-selected model.**  
-> If the user selects `claude-sonnet`, the Orchestrator coordinates execution exclusively for `claude-sonnet`. It must **never** swap `claude-sonnet` for `gpt-4o` or any other model lineage, regardless of provider availability, unless an explicit, future enterprise product policy explicitly directs such degradation.
+> If the user selects `oicunt.model.catalog-alpha`, the Orchestrator coordinates execution exclusively for `oicunt.model.catalog-alpha`. It must **never** swap `oicunt.model.catalog-alpha` for `provider-model-beta` or any other model lineage, regardless of provider availability, unless an explicit, future enterprise product policy explicitly directs such degradation.
 
 #### Why Model Identity Preservation is Required:
 
-1. **Prompt & Behavior Discrepancies**: Different model families interpret system instructions, formatting guidelines, XML tags, and reasoning tokens differently. A prompt optimized for Claude Sonnet may degrade or fail on GPT-4o.
+1. **Prompt & Behavior Discrepancies**: Different model families interpret system instructions, formatting guidelines, XML tags, and reasoning tokens differently. A prompt optimized for Catalog Model Alpha may degrade or fail on Catalog Model Beta.
 2. **Deterministic User Expectations**: Users and product workflows explicitly select models based on coding style, tone, context window size, or reasoning characteristics.
-3. **Transparent Target Failover within the Gateway**: Target redundancy is solved at the **provider target level** inside the Model Gateway behind the Inference Service (e.g. Anthropic direct &rarr; AWS Bedrock fallback for `claude-sonnet`), maintaining 100% model fidelity without cross-vendor substitution.
+3. **Transparent Target Failover within the Gateway**: Target redundancy is solved at the **provider target level** inside the Model Gateway behind the Inference Service (e.g. upstream provider direct &rarr; AWS Bedrock fallback for `oicunt.model.catalog-alpha`), maintaining 100% model fidelity without cross-vendor substitution.
 
 ### 4.2 Dynamic Catalog Discovery Integration
 
@@ -385,7 +385,7 @@ Product applications (BILLY) dynamically query the Model Registry's public catal
 GET /internal/v1/catalog?selectableOnly=true HTTP/1.1
 ```
 
-The client UI renders model cards and effort options dynamically based on the returned `ModelCatalogEntry[]`. When the user makes a selection, BILLY passes the canonical model identifier (`claude-sonnet`) and effort (`medium`) directly to the Orchestrator.
+The client UI renders model cards and effort options dynamically based on the returned `ModelCatalogEntry[]`. When the user makes a selection, BILLY passes the canonical model identifier (`oicunt.model.catalog-alpha`) and effort (`medium`) directly to the Orchestrator.
 
 ### 4.3 Handling Model Availability Lifecycle States
 
@@ -412,8 +412,8 @@ Reasoning effort is a runtime execution parameter and a dynamic model capability
 
 ```mermaid
 flowchart TD
-    ClientReq["Client Request<br/>(model: 'claude-sonnet', effort: 'medium')"] --> Orch[AI Orchestrator]
-    Orch --> Resolve["Query Model Registry<br/>GET /models/resolve/claude-sonnet?effort=medium"]
+    ClientReq["Client Request<br/>(model: 'oicunt.model.catalog-alpha', effort: 'medium')"] --> Orch[AI Orchestrator]
+    Orch --> Resolve["Query Model Registry<br/>GET /models/resolve/oicunt.model.catalog-alpha?effort=medium"]
     Resolve --> Check{"Does model support<br/>reasoning?"}
     Check -- No, but effort requested --> ErrEffort["Reject: 400 UNSUPPORTED_EFFORT_LEVEL"]
     Check -- No, effort omitted --> PassNoEffort["Resolution Success<br/>(effort: undefined)"]
@@ -426,7 +426,7 @@ flowchart TD
     PassNoEffort --> Dispatch
 ```
 
-The validated effort is forwarded in `InferenceExecutionRequest.effort`. The downstream pipeline forwards this to Model Gateway whose provider adapter translates this normalized effort into vendor-specific structures (e.g. Anthropic `budget_tokens`, OpenAI `reasoning_effort`).
+The validated effort is forwarded in `InferenceExecutionRequest.effort`. The downstream pipeline forwards this to Model Gateway whose provider adapter translates this normalized effort into vendor-specific structures (e.g. upstream provider `budget_tokens`, OpenAI `reasoning_effort`).
 
 ---
 
@@ -437,7 +437,7 @@ The AI Orchestrator communicates with the Model Registry via internal HTTP REST:
 ### 6.1 Resolution Request
 
 ```http
-GET /internal/v1/models/resolve/claude-sonnet?effort=medium HTTP/1.1
+GET /internal/v1/models/resolve/oicunt.model.catalog-alpha?effort=medium HTTP/1.1
 Host: model-registry.service.internal:8081
 X-Service-Name: ai-orchestrator
 X-Actor-ID: ai-orchestrator-worker
@@ -507,8 +507,8 @@ const inferenceRequest: InferenceExecutionRequest = {
   eligibleTargets: resolution.eligibleTargets,
   routingPolicy: resolution.routingPolicy,
   privacyPolicy: {
-    exposeReasoning: request.privacyPolicy?.exposeReasoning ?? true,
-    redactThinking: request.privacyPolicy?.redactThinking ?? false,
+    exposeReasoning: request.privacyPolicy?.exposeReasoning ?? false,
+    redactThinking: request.privacyPolicy?.redactThinking ?? true,
     redactThinkingInLogs: true,
   },
   tenantId: context.tenantId,
@@ -559,7 +559,7 @@ Model Gateway SSE Stream ──► Inference Service Stream ──► Orchestrat
    - Payload: `{ "id": "call_123", "name": "get_weather", "argumentChunk": "{\"location\":\"Paris\"" }`
 4. **`event: finish`**:
    - Terminal success event signaling completion of generation.
-   - Payload: `{ "finishReason": "stop", "usage": { ... }, "completionId": "compl_abc", "model": "claude-sonnet" }`
+   - Payload: `{ "finishReason": "stop", "usage": { ... }, "completionId": "compl_abc", "model": "oicunt.model.catalog-alpha" }`
 5. **`event: error`**:
    - Terminal failure event emitted when an in-flight stream fails.
    - Payload: `{ "code": "STREAM_INTERRUPTED", "message": "Upstream connection dropped." }`
@@ -663,7 +663,7 @@ If the client supplies `systemPrompt: string` in `OrchestratorChatRequest`, the 
 Before dispatching to the Inference Service, the Orchestrator performs a bounded, preflight context-window check to reject clearly oversized requests early and preserve platform bandwidth:
 
 1. **Preflight Context Limit Bounds**: The Orchestrator evaluates the incoming conversation against `resolution.limits.contextWindowTokens` and `resolution.limits.maxOutputTokens` authoritatively defined and supplied by the Model Registry.
-2. **Strict Prohibition on Provider Tokenizers**: The Orchestrator must **NOT** introduce provider-specific tokenizers (such as `tiktoken`, Hugging Face tokenizers, or Anthropic/Google tokenizer SDKs) or any vendor SDK dependencies. Importing provider tokenization libraries into the Orchestrator violates the anti-corruption boundary and couples the coordinator to vendor release cycles.
+2. **Strict Prohibition on Provider Tokenizers**: The Orchestrator must **NOT** introduce provider-specific tokenizers (such as `tiktoken`, Hugging Face tokenizers, or upstream provider/Google tokenizer SDKs) or any vendor SDK dependencies. Importing provider tokenization libraries into the Orchestrator violates the anti-corruption boundary and couples the coordinator to vendor release cycles.
 3. **Approximate Estimation Semantics**: Token estimation in the Orchestrator is explicitly approximate unless an OICUNT-owned, provider-neutral tokenizer library is made available in `@oicunt-ai/*`. The Orchestrator employs lightweight, bounded heuristics (e.g., standard character-to-token approximations such as ~4 characters per token for Latin text, plus fixed token bounds for images and structured tool definitions).
 4. **Downstream Execution Authority**: The **downstream execution engine (Model Gateway behind Inference) remains authoritative for actual provider execution**. If a prompt closely approaches the boundary and slips past the preflight heuristic, the downstream pipeline and upstream provider target will enforce the hard context boundary during execution, returning normalized error `CONTEXT_WINDOW_EXCEEDED`.
 5. **No Provider Detail Leakage**: Context-window validation and estimation logic must **never** leak provider-specific implementation details, vendor encoding idiosyncrasies, or vendor-specific token budget formulas into the Orchestrator.
@@ -676,7 +676,7 @@ Before dispatching to the Inference Service, the Orchestrator performs a bounded
     "code": "CONTEXT_WINDOW_EXCEEDED",
     "message": "The combined message context exceeds the model context window limit of 200000 tokens.",
     "details": {
-      "model": "claude-sonnet",
+      "model": "oicunt.model.catalog-alpha",
       "limit": 200000,
       "estimatedTokens": 215400
     }
@@ -818,7 +818,7 @@ All errors are scrubbed and returned in the standard OICUNT error envelope:
     "code": "MODEL_IN_MAINTENANCE",
     "message": "The requested model is temporarily undergoing maintenance. Please select another model.",
     "details": {
-      "model": "claude-sonnet"
+      "model": "oicunt.model.catalog-alpha"
     }
   },
   "meta": {
@@ -870,7 +870,7 @@ Retries are strictly segregated across platform tiers to prevent exponential ret
 
 ### 17.2 Zero Provider Credential Principle
 
-The Orchestrator contains zero provider API keys (Anthropic, OpenAI, Google) and zero cloud provider credentials. It cannot leak provider credentials because it does not possess them.
+The Orchestrator contains zero provider API keys (upstream provider, OpenAI, Google) and zero cloud provider credentials. It cannot leak provider credentials because it does not possess them.
 
 ### 17.3 Non-Root Runtime Isolation
 
@@ -933,7 +933,7 @@ All log lines emit single-line JSON with context binding:
   "requestId": "req_1a2b3c4d",
   "conversationId": "conv_8f9e0d1c",
   "turnId": "turn_3c4d5e6f",
-  "model": "claude-sonnet",
+  "model": "oicunt.model.catalog-alpha",
   "version": "v1.0.0",
   "effort": "medium",
   "durationMs": 1420,
@@ -978,7 +978,7 @@ src/
 - **`application`**: Depends on `domain` and ports. Never imports `infrastructure` or `interfaces`.
 - **`infrastructure`**: Implements application ports. Depends on `application` and `domain`.
 - **`interfaces`**: Inbound HTTP controllers. Calls application use cases.
-- **FORBIDDEN**: Vendor LLM SDKs (`@anthropic-ai/sdk`, `openai`), direct calls to Model Gateway (Inference Service is sole downstream runtime boundary), direct database access to other services, circular dependencies.
+- **FORBIDDEN**: Vendor LLM SDKs (`a vendor SDK`, `openai`), direct calls to Model Gateway (Inference Service is sole downstream runtime boundary), direct database access to other services, circular dependencies.
 
 ---
 
@@ -1040,8 +1040,8 @@ Any future implementation of the AI Orchestrator MUST satisfy the following chec
 - [ ] Orchestrator **never** calls third-party model providers directly.
 - [ ] Orchestrator **never** calls Model Gateway directly (Inference Service is sole downstream runtime boundary).
 - [ ] Orchestrator **never** contains provider API keys or credentials.
-- [ ] Orchestrator **never** imports vendor SDKs (`@anthropic-ai/sdk`, `openai`, `@google/genai`).
-- [ ] User's selected canonical model identity (`claude-sonnet`, etc.) is **strictly preserved** without silent model replacement.
+- [ ] Orchestrator **never** imports vendor SDKs (`a vendor SDK`, `openai`, `@google/genai`).
+- [ ] User's selected canonical model identity (`oicunt.model.catalog-alpha`, etc.) is **strictly preserved** without silent model replacement.
 - [ ] Reasoning effort is treated as a request parameter and validated against Model Registry capabilities.
 - [ ] Model Registry authoritatively resolves eligible targets, capabilities, and token limits.
 - [ ] Inference Service is the sole downstream execution coordinator; Model Gateway authoritatively executes dispatches, retries, and target fallbacks behind Inference.
