@@ -3,6 +3,7 @@ import { loadModelGatewayConfig, type ModelGatewayConfig } from './config.js';
 import type { AdapterRegistryPort } from './application/ports/adapter-registry.port.js';
 import type { CircuitBreakerStorePort } from './application/ports/circuit-breaker-store.port.js';
 import { InMemoryAdapterRegistry } from './infrastructure/adapters/in-memory-adapter-registry.js';
+import { GroqProviderAdapter } from './infrastructure/adapters/groq/index.js';
 import { InMemoryCircuitBreakerStore } from './infrastructure/circuit-breaker/in-memory-circuit-breaker-store.js';
 import { JsonLogger } from './infrastructure/logging/logger.js';
 import { DispatchModelUseCase } from './application/use-cases/dispatch-model.use-case.js';
@@ -37,6 +38,19 @@ export class ModelGatewayService {
     this.config = dependencies.config ?? loadModelGatewayConfig();
 
     this.adapterRegistry = dependencies.adapterRegistry ?? new InMemoryAdapterRegistry();
+    if (!dependencies.adapterRegistry) {
+      // Register the Groq adapter only when credentials are configured.
+      // Without GROQ_API_KEY the gateway honestly reports not-ready.
+      const groqApiKey = this.config.groq?.apiKey;
+      if (groqApiKey && groqApiKey.trim().length > 0) {
+        this.adapterRegistry.register(
+          new GroqProviderAdapter({
+            apiKey: groqApiKey,
+            baseUrl: this.config.groq?.baseUrl,
+          }),
+        );
+      }
+    }
     this.circuitBreakerStore =
       dependencies.circuitBreakerStore ??
       new InMemoryCircuitBreakerStore(this.config.circuitBreaker);

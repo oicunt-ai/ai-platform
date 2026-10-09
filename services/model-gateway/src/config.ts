@@ -10,6 +10,11 @@ export interface CircuitBreakerOptions {
 
 export type RetryPolicyOptions = RetryPolicyConfig;
 
+export interface GroqProviderConfig {
+  readonly apiKey?: string | undefined;
+  readonly baseUrl?: string | undefined;
+}
+
 export interface ModelGatewayConfig {
   readonly serviceName: string;
   readonly environment: Environment;
@@ -24,6 +29,7 @@ export interface ModelGatewayConfig {
   readonly defaultTimeoutMs: number;
   readonly circuitBreaker: CircuitBreakerOptions;
   readonly retryPolicy: RetryPolicyOptions;
+  readonly groq?: GroqProviderConfig | undefined;
   readonly internalToken?: string | undefined;
   readonly rabbitmqUrl?: string | undefined;
   readonly usageExchange: string;
@@ -88,6 +94,13 @@ export function loadModelGatewayConfig(
       (env === 'production' || process.env['ENABLE_USAGE_PUBLISHING'] === 'true'),
     maxBodySizeBytes: overrides?.maxBodySizeBytes ?? 1048576,
     defaultTimeoutMs: overrides?.defaultTimeoutMs ?? 120000,
+    groq: {
+      apiKey: overrides?.groq?.apiKey ?? process.env['GROQ_API_KEY'],
+      baseUrl:
+        overrides?.groq?.baseUrl ??
+        process.env['GROQ_BASE_URL'] ??
+        'https://api.groq.com/openai/v1',
+    },
     circuitBreaker: {
       failureThresholdPercentage:
         overrides?.circuitBreaker?.failureThresholdPercentage ??
