@@ -212,6 +212,8 @@ importers:
         specifier: workspace:*
         version: link:../model-types
 
+  packages/internal-contracts: {}
+
   packages/mcp-types:
     dependencies:
       '@oicunt-ai/tool-types':
@@ -266,6 +268,9 @@ importers:
       '@oicunt-ai/ai-types':
         specifier: workspace:*
         version: link:../../packages/ai-types
+      '@oicunt-ai/internal-contracts':
+        specifier: workspace:*
+        version: link:../../packages/internal-contracts
       '@oicunt-ai/model-types':
         specifier: workspace:*
         version: link:../../packages/model-types
@@ -290,6 +295,9 @@ importers:
       '@oicunt-ai/ai-types':
         specifier: workspace:*
         version: link:../../packages/ai-types
+      '@oicunt-ai/internal-contracts':
+        specifier: workspace:*
+        version: link:../../packages/internal-contracts
       '@oicunt-ai/model-types':
         specifier: workspace:*
         version: link:../../packages/model-types
@@ -349,6 +357,9 @@ importers:
       '@oicunt-ai/ai-types':
         specifier: workspace:*
         version: link:../../packages/ai-types
+      '@oicunt-ai/internal-contracts':
+        specifier: workspace:*
+        version: link:../../packages/internal-contracts
       '@oicunt-ai/observability':
         specifier: workspace:*
         version: link:../../packages/observability
@@ -365,18 +376,34 @@ importers:
       '@oicunt-ai/ai-types':
         specifier: workspace:*
         version: link:../../packages/ai-types
+      '@oicunt-ai/internal-contracts':
+        specifier: workspace:*
+        version: link:../../packages/internal-contracts
       '@oicunt-ai/model-types':
         specifier: workspace:*
         version: link:../../packages/model-types
       '@oicunt-ai/observability':
         specifier: workspace:*
         version: link:../../packages/observability
+      '@oicunt-ai/usage-types':
+        specifier: workspace:*
+        version: link:../../packages/usage-types
+      amqplib:
+        specifier: ^2.2.0
+        version: 2.2.0
+    devDependencies:
+      '@types/amqplib':
+        specifier: ^0.10.8
+        version: 0.10.8
 
   services/model-registry:
     dependencies:
       '@oicunt-ai/ai-types':
         specifier: workspace:*
         version: link:../../packages/ai-types
+      '@oicunt-ai/internal-contracts':
+        specifier: workspace:*
+        version: link:../../packages/internal-contracts
       '@oicunt-ai/model-types':
         specifier: workspace:*
         version: link:../../packages/model-types
@@ -409,37 +436,6 @@ importers:
       '@types/pg':
         specifier: ^8.11.10
         version: 8.23.1
-
-  services/usage:
-    dependencies:
-      '@oicunt-ai/observability':
-        specifier: workspace:*
-        version: link:../../packages/observability
-      '@oicunt-ai/usage-types':
-        specifier: workspace:*
-        version: link:../../packages/usage-types
-      amqplib:
-        specifier: ^2.2.0
-        version: 2.2.0
-      pg:
-        specifier: ^8.13.1
-        version: 8.23.1
-    devDependencies:
-      '@types/amqplib':
-        specifier: ^0.10.8
-        version: 0.10.8
-      '@types/node':
-        specifier: ^26.6.4
-        version: 26.6.4
-      '@types/pg':
-        specifier: ^8.11.10
-        version: 8.23.1
-      typescript:
-        specifier: ~5.7.3
-        version: 5.7.3
-      vitest:
-        specifier: ^5.0.3
-        version: 5.0.3(@types/node@26.6.4)(vite@8.3.2(@types/node@26.6.4))
 
   templates/service:
     dependencies:

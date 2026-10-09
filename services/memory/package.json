@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@oicunt-ai/ai-types": "workspace:*",
+    "@oicunt-ai/internal-contracts": "workspace:*",
     "@oicunt-ai/observability": "workspace:*",
     "pg": "^8.13.1"
   },

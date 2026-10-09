@@ -3,6 +3,7 @@
   "files": [],
   "references": [
     { "path": "./packages/model-types" },
+    { "path": "./packages/internal-contracts" },
     { "path": "./packages/ai-types" },
     { "path": "./packages/tool-types" },
     { "path": "./packages/agent-types" },
@@ -20,7 +21,6 @@
     { "path": "./services/tools" },
     { "path": "./services/agents" },
     { "path": "./services/mcp" },
-    { "path": "./services/usage" },
     { "path": "./workers/agent-jobs" }
   ]
 }

@@ -5,6 +5,7 @@
     "outDir": "dist"
   },
   "references": [
+    { "path": "../../packages/internal-contracts" },
     { "path": "../../packages/model-types" },
     { "path": "../../packages/ai-types" },
     { "path": "../../packages/observability" }

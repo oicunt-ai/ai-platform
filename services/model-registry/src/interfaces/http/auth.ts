@@ -1,5 +1,8 @@
-import { createHmac, timingSafeEqual } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
+import {
+  assertSignedContextMatchesHeaders,
+  verifyInternalServiceToken,
+} from '@oicunt-ai/internal-contracts';
 import type { ModelRegistryConfig } from '../../config.js';
 import { ModelValidationError } from '../../domain/index.js';
 import type { RequestContext } from './context.js';
@@ -61,36 +64,29 @@ export function authenticateAndAuthorizeRequest(
       providedToken = internalTokenHeader.trim();
     }
 
-    const isExactMatch = providedToken === config.internalAuthToken;
-    let isValidSignedToken = false;
-    if (!isExactMatch && providedToken && providedToken.split('.').length === 3) {
-      try {
-        const parts = providedToken.split('.');
-        const [headerB64, payloadB64, signatureB64] = parts;
-        if (headerB64 && payloadB64 && signatureB64) {
-          const header = JSON.parse(Buffer.from(headerB64, 'base64url').toString('utf8'));
-          if (header.alg === 'HS256') {
-            const expSig = createHmac('sha256', config.internalAuthToken)
-              .update(`${headerB64}.${payloadB64}`)
-              .digest('base64url');
-            const sigBuf = Buffer.from(signatureB64, 'utf8');
-            const expBuf = Buffer.from(expSig, 'utf8');
-            if (sigBuf.length === expBuf.length && timingSafeEqual(sigBuf, expBuf)) {
-              const payload = JSON.parse(Buffer.from(payloadB64, 'base64url').toString('utf8'));
-              const now = Math.floor(Date.now() / 1000);
-              if (typeof payload.exp === 'number' && payload.exp > now - 5) {
-                isValidSignedToken = true;
-              }
-            }
-          }
-        }
-      } catch {
-        // Not a valid JWT
-      }
-    }
+    const isTestStaticToken =
+      config.environment === 'test' && providedToken === config.internalAuthToken;
+    const verification =
+      providedToken && !isTestStaticToken
+        ? verifyInternalServiceToken(providedToken, {
+            secret: config.internalAuthToken,
+            expectedAudience: 'model-registry',
+            allowedServiceIdentities: config.allowedServiceIdentities,
+          })
+        : undefined;
 
-    if (!providedToken || (!isExactMatch && !isValidSignedToken)) {
+    if (!isTestStaticToken && (!verification || !verification.success)) {
       throw new UnauthorizedError('Missing or invalid internal authorization token');
+    }
+    if (
+      verification?.success &&
+      (!assertSignedContextMatchesHeaders(verification.claims, {
+        tenantId: context.tenantId,
+        correlationId: context.correlationId,
+      }) ||
+        verification.serviceName !== context.serviceName)
+    ) {
+      throw new ForbiddenError('Signed request context mismatch');
     }
   }
 

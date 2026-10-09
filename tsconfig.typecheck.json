@@ -24,7 +24,6 @@
       "@oicunt-ai/service-tools": ["./services/tools/src/index.ts"],
       "@oicunt-ai/service-agents": ["./services/agents/src/index.ts"],
       "@oicunt-ai/service-mcp": ["./services/mcp/src/index.ts"],
-      "@oicunt-ai/service-usage": ["./services/usage/src/index.ts"],
       "@oicunt-ai/worker-agent-jobs": ["./workers/agent-jobs/src/index.ts"]
     }
   },

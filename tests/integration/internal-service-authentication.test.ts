@@ -1,12 +1,17 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import http from 'node:http';
-import type { AddressInfo } from 'node:net';
 import { resolve } from 'node:path';
 import { pathToFileURL } from 'node:url';
 
-import { ModelRegistryService } from '@oicunt-ai/service-model-registry';
+import {
+  CanonicalModel,
+  ModelRegistryService,
+  ModelTarget,
+  ModelVersion,
+} from '@oicunt-ai/service-model-registry';
 import { loadModelRegistryConfig } from '../../services/model-registry/src/config.js';
 import { ModelGatewayService } from '@oicunt-ai/service-model-gateway';
+import { InMemoryAdapterRegistry } from '../../services/model-gateway/src/infrastructure/adapters/in-memory-adapter-registry.js';
+import { FakeProviderAdapter } from '../../services/model-gateway/tests/test-doubles/fake-provider-adapter.js';
 import { loadModelGatewayConfig } from '../../services/model-gateway/src/config.js';
 import { InferenceService } from '@oicunt-ai/service-inference';
 import { loadInferenceConfig } from '../../services/inference/src/config.js';
@@ -64,8 +69,8 @@ describe('Step 6 - Internal Service Authentication Integration Tests', () => {
           eligibleTargets: [
             {
               targetId: 'target-1',
-              provider: 'anthropic',
-              upstreamModelId: 'claude-3-5-sonnet',
+              provider: 'test-provider',
+              upstreamModelId: 'provider-model-alpha',
               priority: 1,
               weight: 100,
               supportsStreaming: true,
@@ -109,7 +114,7 @@ describe('Step 6 - Internal Service Authentication Integration Tests', () => {
     });
 
     const validChatBody = JSON.stringify({
-      model: 'claude-sonnet',
+      model: 'oicunt.model.catalog-alpha',
       messages: [{ role: 'user', content: 'Hello' }],
     });
 
@@ -119,6 +124,9 @@ describe('Step 6 - Internal Service Authentication Integration Tests', () => {
         audience: 'ai-orchestrator',
         secret: internalSecret,
         expiresInSeconds: 60,
+        correlationId: 'corr-auth-success',
+        userId: 'usr_trusted_1',
+        tenantId: 'tnt_trusted_1',
       });
 
       const res = await fetch(
@@ -285,6 +293,7 @@ describe('Step 6 - Internal Service Authentication Integration Tests', () => {
         audience: 'ai-orchestrator',
         secret: internalSecret,
         expiresInSeconds: 60,
+        correlationId: 'corr-auth-spoofed-svc',
       });
 
       const res = await fetch(
@@ -333,8 +342,6 @@ describe('Step 6 - Internal Service Authentication Integration Tests', () => {
   });
 
   describe('Full Multi-Hop Authenticated Runtime Flow', () => {
-    let mockServer: http.Server | null = null;
-    let mockPort: number;
     let modelGatewayService: ModelGatewayService | null = null;
     let modelRegistryService: ModelRegistryService | null = null;
     let inferenceService: InferenceService | null = null;
@@ -368,38 +375,10 @@ describe('Step 6 - Internal Service Authentication Integration Tests', () => {
         await modelGatewayService.stop();
         modelGatewayService = null;
       }
-      if (mockServer) {
-        await new Promise<void>((resolve) => mockServer!.close(() => resolve()));
-        mockServer = null;
-      }
     });
 
     it('proves authenticated execution end-to-end through API Gateway -> Orchestrator -> Inference -> Model Gateway', async () => {
-      // 1. Mock Anthropic Server
-      const mockResponse = {
-        id: 'msg_auth_e2e_01',
-        type: 'message',
-        role: 'assistant',
-        content: [{ type: 'text', text: 'Secure multi-hop response successfully returned!' }],
-        model: 'claude-3-5-sonnet-20241022',
-        stop_reason: 'end_turn',
-        usage: { input_tokens: 20, output_tokens: 15 },
-      };
-
-      mockServer = http.createServer((_req, res) => {
-        res.writeHead(200, { 'Content-Type': 'application/json' });
-        res.end(JSON.stringify(mockResponse));
-      });
-
-      await new Promise<void>((resolve) => {
-        mockServer!.listen(0, '127.0.0.1', () => {
-          const addr = mockServer!.address() as AddressInfo;
-          mockPort = addr.port;
-          resolve();
-        });
-      });
-
-      // 2. Start Model Gateway with internal authentication
+      // 1. Start Model Gateway with a provider-neutral test adapter.
       const mgwConfig = loadModelGatewayConfig({
         port: 0,
         host: '127.0.0.1',
@@ -407,28 +386,74 @@ describe('Step 6 - Internal Service Authentication Integration Tests', () => {
         logLevel: 'silent',
         internalToken: internalSecret,
         allowedServiceIdentities: ['inference'],
-        anthropic: {
-          apiKey: 'sk-ant-test-auth',
-          baseUrl: `http://127.0.0.1:${mockPort}`,
-        },
       });
-      modelGatewayService = new ModelGatewayService({ config: mgwConfig });
+      const adapterRegistry = new InMemoryAdapterRegistry([
+        new FakeProviderAdapter('test-provider', {
+          unaryHandler: async (request) => ({
+            completionId: request.completionId,
+            model: request.payload.canonicalModelId,
+            message: {
+              role: 'assistant',
+              content: [{ type: 'text', text: 'Secure multi-hop response successfully returned!' }],
+            },
+            finishReason: 'stop',
+            usage: { promptTokens: 20, completionTokens: 15, totalTokens: 35 },
+            latencyMs: 1,
+          }),
+        }),
+      ]);
+      modelGatewayService = new ModelGatewayService({ config: mgwConfig, adapterRegistry });
       gatewayPort = await modelGatewayService.start();
 
-      // 3. Start Model Registry with auto-seeded claude-sonnet
+      // 2. Register a catalog model and its internal provider target.
       const regConfig = loadModelRegistryConfig({
         port: 0,
         host: '127.0.0.1',
         environment: 'test',
         logLevel: 'silent',
-        internalToken: internalSecret,
+        internalAuthToken: internalSecret,
         allowedServiceIdentities: ['ai-orchestrator'],
-        autoSeedRealModel: true,
       });
       modelRegistryService = new ModelRegistryService({ config: regConfig });
+      const model = new CanonicalModel({
+        id: 'oicunt.model.catalog-alpha',
+        displayName: 'Catalog Model Alpha',
+        description: 'Provider-neutral integration-test catalog model',
+        activeVersion: 'v1.0.0',
+      });
+      const version = new ModelVersion({
+        id: 'version-catalog-alpha-v1',
+        canonicalModelId: model.id,
+        version: 'v1.0.0',
+        modalities: ['text'],
+        capabilities: {
+          streaming: true,
+          toolCalling: false,
+          structuredOutputs: false,
+          reasoning: false,
+          vision: false,
+          audioInput: false,
+          audioOutput: false,
+          systemInstructions: true,
+        },
+        limits: { contextWindowTokens: 32_000, maxOutputTokens: 4_096 },
+        pricing: { costPerMillionInputTokens: 0, costPerMillionOutputTokens: 0 },
+        status: 'available',
+      });
+      model.addVersion(version);
+      model.addTarget(
+        new ModelTarget({
+          id: 'target-provider-a-alpha',
+          modelVersionId: version.id,
+          provider: 'test-provider',
+          upstreamModelId: 'provider-model-alpha-v1',
+          status: 'available',
+        }),
+      );
+      await modelRegistryService.getModelRepository().save(model);
       registryPort = await modelRegistryService.start();
 
-      // 4. Start Inference Service with internal authentication
+      // 3. Start Inference Service with internal authentication
       const infConfig = loadInferenceConfig({
         port: 0,
         host: '127.0.0.1',
@@ -441,7 +466,7 @@ describe('Step 6 - Internal Service Authentication Integration Tests', () => {
       inferenceService = new InferenceService({ config: infConfig });
       inferencePort = await inferenceService.start();
 
-      // 5. Start AI Orchestrator with internal authentication
+      // 4. Start AI Orchestrator with internal authentication
       const orchConfig = loadAiOrchestratorConfig({
         port: 0,
         host: '127.0.0.1',
@@ -456,7 +481,7 @@ describe('Step 6 - Internal Service Authentication Integration Tests', () => {
       orchestratorService = new AiOrchestratorService({ config: orchConfig });
       orchestratorPort = await orchestratorService.start();
 
-      // 6. Start Platform API Gateway with internal service secret
+      // 5. Start Platform API Gateway with internal service secret
       const gatewayDistPath = resolve(
         process.cwd(),
         '../platform/services/api-gateway/dist/index.js',
@@ -497,10 +522,10 @@ describe('Step 6 - Internal Service Authentication Integration Tests', () => {
       });
       platformGatewayPort = await gatewayService.start();
 
-      // 7. Make public client request to Platform API Gateway
+      // 6. Make public client request to Platform API Gateway
       const clientReq = {
         conversationId: 'conv-auth-test-1',
-        model: 'claude-sonnet',
+        model: 'oicunt.model.catalog-alpha',
         messages: [{ role: 'user', content: 'Prove multi-hop service authentication.' }],
       };
 
@@ -514,12 +539,15 @@ describe('Step 6 - Internal Service Authentication Integration Tests', () => {
         body: JSON.stringify(clientReq),
       });
 
-      expect(res.status).toBe(200);
-      const body = (await res.json()) as any;
+      const rawBody = await res.text();
+      expect(res.status, rawBody).toBe(200);
+      const body = JSON.parse(rawBody) as any;
       expect(body.success).toBe(true);
-      expect(body.data?.model).toBe('claude-sonnet');
-      expect(body.data?.message?.content).toBe('Secure multi-hop response successfully returned!');
+      expect(body.data?.model).toBe('oicunt.model.catalog-alpha');
+      expect(body.data?.message?.content).toEqual([
+        { type: 'text', text: 'Secure multi-hop response successfully returned!' },
+      ]);
       expect(body.meta?.correlationId).toBe('corr-auth-multihop-999');
-    });
+    }, 15_000);
   });
 });

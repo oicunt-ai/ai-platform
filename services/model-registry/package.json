@@ -17,6 +17,7 @@
     "type-check": "tsc -b --noEmit"
   },
   "dependencies": {
+    "@oicunt-ai/internal-contracts": "workspace:*",
     "@oicunt-ai/model-types": "workspace:*",
     "@oicunt-ai/ai-types": "workspace:*",
     "@oicunt-ai/observability": "workspace:*",

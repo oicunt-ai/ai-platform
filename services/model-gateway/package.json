@@ -19,6 +19,12 @@
   "dependencies": {
     "@oicunt-ai/ai-types": "workspace:*",
     "@oicunt-ai/model-types": "workspace:*",
-    "@oicunt-ai/observability": "workspace:*"
+    "@oicunt-ai/observability": "workspace:*",
+    "@oicunt-ai/internal-contracts": "workspace:*",
+    "@oicunt-ai/usage-types": "workspace:*",
+    "amqplib": "^2.2.0"
+  },
+  "devDependencies": {
+    "@types/amqplib": "^0.10.8"
   }
 }
