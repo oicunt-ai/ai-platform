@@ -147,3 +147,64 @@ This verifies that:
 - All packages and templates build cleanly (`pnpm build`)
 - Type checking passes monorepo-wide (`pnpm type-check`)
 - All unit and integration tests pass (`pnpm test`)
+
+---
+
+## 8. Local Development Stack (`pnpm dev`)
+
+`pnpm dev` runs `scripts/dev-up.mjs`, a dependency-free Node launcher that
+starts the five development services in order — Model Registry (3001),
+Model Gateway (3002), Memory (3005), Inference (3004), AI Orchestrator
+(3003) — with readiness gating, then supervises them in the foreground.
+
+### Prerequisites
+
+- PostgreSQL + RabbitMQ via Docker Compose (`infrastructure/docker`,
+  see `infrastructure/docker/README.local.md`); healthy before `pnpm dev`.
+- Built services (`pnpm build`): the launcher runs `dist/start.js` per
+  service and fails fast naming any missing entrypoint.
+- A repo `.env` copied from `.env.example` with real local values.
+
+### Required environment variable names
+
+`INTERNAL_SERVICE_TOKEN` (shared development secret for inter-service
+auth; pair-specific `*_INTERNAL_TOKEN` names are honored when set),
+`DATABASE_HOST`, `DATABASE_PORT`, `DATABASE_USER`, `DATABASE_PASSWORD`.
+Missing names abort startup with an explicit list — values are never
+printed. `DATABASE_NAME` is set per service (`oicunt_ai`, `oicunt_memory`).
+Downstream URLs default to loopback ports and should be overridden only
+for non-standard topologies.
+
+### Internal service-token compatibility with Platform
+
+The Gateway (separate repository) accepts the same shared
+`INTERNAL_SERVICE_TOKEN` outside production. Use one strong random value
+for every local process, e.g.
+`node -e "console.log(require('crypto').randomBytes(32).toString('hex'))"`.
+Never commit it; never reuse it outside local development.
+
+### Running, verifying, and stopping
+
+```bash
+pnpm dev
+```
+
+Each service is gated on `/healthz` then `/readyz` (bounded timeouts);
+any failure stops already-started services in reverse order and exits
+non-zero. All output shares one terminal prefixed `[name]` (service) or
+`[dev-up]` (launcher). Press Ctrl+C to stop everything in reverse order.
+If a service dies unexpectedly, the launcher reports it and shuts the
+rest down — nothing is ever restarted automatically.
+
+### Troubleshooting
+
+- **Occupied port:** the launcher refuses duplicates and names the port
+  and probe result. Stop the existing process or free the port.
+- **Missing secrets:** the launcher names the exact variables. Fill them
+  in `.env` (uncomment `INTERNAL_SERVICE_TOKEN` first).
+- **Dependency failure:** check Docker health, then the failing service's
+  prefixed lines. Readiness cascades: orchestrator needs memory+registry,
+  inference needs model-gateway.
+- **Production guard:** the launcher refuses `NODE_ENV=production` and
+  always binds `127.0.0.1`. Platform Usage is never started by it (its
+  boot-time migration requires separate authorization).
