@@ -5,6 +5,7 @@ import type {
   NormalizedCompletionData,
   StreamEvent,
 } from '@oicunt-ai/ai-types';
+import type { TokenUsage } from '@oicunt-ai/model-types';
 import type { AiMetricsRecorder, AiTracer } from '@oicunt-ai/observability';
 import { NoopAiMetricsRecorder, NoopAiTracer } from '@oicunt-ai/observability';
 import {
@@ -14,6 +15,7 @@ import {
   GatewayError,
   InferenceTimeoutError,
   InternalGatewayError,
+  MeteringCaptureUnavailableError,
   RequestCancelledError,
   StreamInterruptedError,
   UnsupportedCapabilityError,
@@ -22,7 +24,7 @@ import {
 import type { GatewayDispatchPayload, ResolvedTargetDto } from '../dtos/dispatch.dto.js';
 import type { AdapterRegistryPort } from '../ports/adapter-registry.port.js';
 import type { CircuitBreakerStorePort } from '../ports/circuit-breaker-store.port.js';
-import type { UsagePublisherPort } from '../ports/usage-publisher.port.js';
+import type { MeteringCapturePort } from '../ports/metering-capture.port.js';
 import type { UsageEvent } from '@oicunt-ai/usage-types';
 
 export interface DispatchModelUseCaseDependencies {
@@ -32,7 +34,14 @@ export interface DispatchModelUseCaseDependencies {
   readonly metrics?: AiMetricsRecorder | undefined;
   readonly retryPolicy?: RetryPolicyConfig | undefined;
   readonly defaultTimeoutMs?: number | undefined;
-  readonly usagePublisher?: UsagePublisherPort | undefined;
+  /**
+   * Durable metering capture (P1 outbox). When present, provider usage is
+   * captured to PostgreSQL before success is reported; RabbitMQ delivery
+   * happens asynchronously via the outbox drainer (P2). When absent,
+   * metering is disabled and execution behavior is unchanged.
+   */
+  readonly meteringCapture?: MeteringCapturePort | undefined;
+  readonly meteringCaptureTimeoutMs?: number | undefined;
 }
 
 export class DispatchModelUseCase {
@@ -42,7 +51,8 @@ export class DispatchModelUseCase {
   private readonly metrics: AiMetricsRecorder;
   private readonly retryPolicy: RetryPolicyConfig;
   private readonly defaultTimeoutMs: number;
-  private readonly usagePublisher?: UsagePublisherPort | undefined;
+  private readonly meteringCapture?: MeteringCapturePort | undefined;
+  private readonly meteringCaptureTimeoutMs: number;
 
   constructor(deps: DispatchModelUseCaseDependencies) {
     this.adapterRegistry = deps.adapterRegistry;
@@ -50,7 +60,8 @@ export class DispatchModelUseCase {
     this.tracer = deps.tracer ?? new NoopAiTracer();
     this.metrics = deps.metrics ?? new NoopAiMetricsRecorder();
     this.defaultTimeoutMs = deps.defaultTimeoutMs ?? 120000;
-    this.usagePublisher = deps.usagePublisher;
+    this.meteringCapture = deps.meteringCapture;
+    this.meteringCaptureTimeoutMs = deps.meteringCaptureTimeoutMs ?? 2000;
     this.retryPolicy = deps.retryPolicy ?? {
       maxAttemptsPerTarget: 3,
       maxFallbackAttempts: 2,
@@ -126,25 +137,43 @@ export class DispatchModelUseCase {
           });
 
           cleanup();
+          // The provider outcome is decided here, before any metering.
+          // A later metering failure must not rewrite this verdict.
           breaker.recordSuccess();
 
           const sanitizedResult = this.applyReasoningPrivacyUnary(rawResult, payload);
           providerFinished = true;
-          await this.publishUsage(payload, target, sanitizedResult);
+          // Durable metering capture, isolated from the provider outcome:
+          // any failure throws METERING_CAPTURE_UNAVAILABLE directly (see
+          // the providerFinished guard in catch below) without touching the
+          // breaker and without triggering another provider attempt.
+          await this.captureCompletionUsage(payload, target, sanitizedResult);
           this.recordTelemetry(payload, target, sanitizedResult, Date.now() - startTime);
 
           return sanitizedResult;
         } catch (err: unknown) {
           cleanup();
+          if (providerFinished) {
+            // The provider already succeeded; this error came from metering
+            // capture (or terminal handling) after success. Never mark the
+            // provider unhealthy and never retry: a retry would perform a
+            // second real provider call for consumption already delivered.
+            // NOTE: a post-provider capture failure can still leave
+            // provider-side usage requiring out-of-band reconciliation —
+            // METERING_CAPTURE_UNAVAILABLE reports that gap honestly instead
+            // of claiming zero unbilled consumption.
+            throw err;
+          }
           breaker.recordFailure();
 
           const normalized = this.normalizeError(err, payload, target.targetId);
           if (!providerFinished) {
-            await this.publishFailedAttemptUsageBounded(
+            await this.captureFailedAttemptUsageBounded(
               payload,
               target,
               completionId,
               normalized.code,
+              undefined,
             );
           }
 
@@ -273,6 +302,9 @@ export class DispatchModelUseCase {
         const completionId = randomUUID();
         const { signal, cleanup, attemptTimeoutMs } = budget.createAttemptSignal();
         let providerFinished = false;
+        // Last provider-reported usage observed before a failure, if any.
+        // Adapter error events may carry it; token events never do.
+        let lastKnownUsage: TokenUsage | undefined;
 
         try {
           const rawStream = adapter.executeStream({
@@ -303,21 +335,49 @@ export class DispatchModelUseCase {
 
             if (event.event === 'finish') {
               providerFinished = true;
-              await this.publishUsage(payload, target, {
+              // The provider outcome is decided here, before any metering.
+              breaker.recordSuccess();
+              const completion = {
                 completionId,
                 model: payload.canonicalModelId,
                 message: { role: 'assistant', content: '' },
                 finishReason: event.data.finishReason,
                 usage: event.data.usage,
                 latencyMs: 0,
-              });
-              breaker.recordSuccess();
+              } satisfies NormalizedCompletionData;
+              try {
+                // Durable capture BEFORE yielding finish: nothing after
+                // `yield finish` may be relied upon to execute.
+                await this.captureCompletionUsage(payload, target, completion);
+              } catch (captureErr: unknown) {
+                // Metering failed after provider success. Report honestly
+                // instead of finish; never retry (tokens were already
+                // streamed) and never blame the provider.
+                const captureCode =
+                  captureErr instanceof MeteringCaptureUnavailableError
+                    ? captureErr.code
+                    : 'METERING_CAPTURE_UNAVAILABLE';
+                yield {
+                  event: 'error',
+                  data: {
+                    code: captureCode,
+                    message:
+                      'Usage metering capture is temporarily unavailable; the AI provider ' +
+                      'result was not durably recorded.',
+                  },
+                };
+                cleanup();
+                return;
+              }
               yield event;
               cleanup();
               return;
             }
 
             if (event.event === 'error') {
+              if (event.data.usage) {
+                lastKnownUsage = event.data.usage;
+              }
               throw new StreamInterruptedError(
                 payload.canonicalModelId,
                 payload.correlationId,
@@ -326,20 +386,41 @@ export class DispatchModelUseCase {
             }
           }
 
-          cleanup();
-          return;
+          // A provider stream that ends cleanly without a finish event has a
+          // defined metering outcome: it is an interruption, never a silent
+          // non-event — delivered tokens would otherwise go unbilled.
+          throw new StreamInterruptedError(
+            payload.canonicalModelId,
+            payload.correlationId,
+            target.targetId,
+          );
         } catch (err: unknown) {
           cleanup();
+          if (providerFinished) {
+            // The provider already succeeded; this error came from metering
+            // or delivery after success. Never mark the provider unhealthy
+            // and never retry.
+            const terminal = this.normalizeError(err, payload, target.targetId);
+            yield {
+              event: 'error',
+              data: {
+                code: terminal.code,
+                message: terminal.message,
+              },
+            };
+            return;
+          }
           breaker.recordFailure();
 
           const normalized = this.normalizeError(err, payload, target.targetId);
           lastError = normalized;
           if (!providerFinished) {
-            await this.publishFailedAttemptUsageBounded(
+            await this.captureFailedAttemptUsageBounded(
               payload,
               target,
               completionId,
               normalized.code,
+              lastKnownUsage,
             );
           }
 
@@ -438,6 +519,19 @@ export class DispatchModelUseCase {
   private validatePayload(payload: GatewayDispatchPayload): void {
     if (!payload.eligibleTargets || payload.eligibleTargets.length === 0) {
       throw new AllTargetsExhaustedError(payload.canonicalModelId, payload.correlationId);
+    }
+
+    // Billing identity gate: when metering is enabled, a missing tenant can
+    // never produce a valid usage event, so fail HERE — before any provider
+    // tokens are consumed — instead of after a provider call. actorId and
+    // userId stay optional (omitted identities are valid downstream).
+    // When metering is disabled no event is built and no gate applies.
+    if (this.meteringCapture !== undefined && !payload.tenantId) {
+      throw new InternalGatewayError(
+        payload.canonicalModelId,
+        payload.correlationId,
+        'Tenant context is required for usage accounting',
+      );
     }
 
     // Context limit check
@@ -601,19 +695,46 @@ export class DispatchModelUseCase {
     }
   }
 
-  private async publishUsage(
+  /**
+   * Durably captures a successful completion's usage event BEFORE the caller
+   * reports provider success. Isolated from the provider outcome: any
+   * failure rejects with METERING_CAPTURE_UNAVAILABLE (never a provider
+   * error type) and callers must let it propagate without touching the
+   * circuit breaker or triggering another provider attempt.
+   */
+  private async captureCompletionUsage(
     payload: GatewayDispatchPayload,
     target: ResolvedTargetDto,
     completion: NormalizedCompletionData,
   ): Promise<void> {
-    if (!this.usagePublisher) return;
+    if (!this.meteringCapture) return;
+    const event = this.buildCompletionUsageEvent(payload, target, completion);
+    try {
+      await this.meteringCapture.capture(event, { timeoutMs: this.meteringCaptureTimeoutMs });
+    } catch (error) {
+      if (error instanceof MeteringCaptureUnavailableError) {
+        throw error;
+      }
+      throw new MeteringCaptureUnavailableError(
+        payload.canonicalModelId,
+        payload.correlationId,
+        target.targetId,
+      );
+    }
+  }
+
+  private buildCompletionUsageEvent(
+    payload: GatewayDispatchPayload,
+    target: ResolvedTargetDto,
+    completion: NormalizedCompletionData,
+  ): UsageEvent {
     if (!payload.tenantId)
       throw new InternalGatewayError(
         payload.canonicalModelId,
         payload.correlationId,
         'Tenant context is required for usage accounting',
       );
-    const event: UsageEvent = {
+    return {
       eventId: `usage_${completion.completionId}`,
       schemaVersion: '1.0.0',
       tenantId: payload.tenantId,
@@ -633,6 +754,7 @@ export class DispatchModelUseCase {
         provider: target.provider,
         targetId: target.targetId,
         finishReason: completion.finishReason,
+        usageSource: completion.usage.usageSource ?? 'unknown',
       },
       lineage: {
         correlationId: payload.correlationId,
@@ -642,17 +764,49 @@ export class DispatchModelUseCase {
       idempotencyKey: `model.completion:${completion.completionId}`,
       occurredAt: new Date().toISOString(),
     };
-    await this.usagePublisher.publish(event);
   }
 
-  private async publishFailedAttemptUsageBounded(
+  /**
+   * Captures a failed/cancelled/interrupted attempt for accounting. Bounded
+   * and best-effort: the provider call already failed, so a capture failure
+   * here is swallowed rather than masking the original provider error.
+   *
+   * Token counts are recorded ONLY when the provider actually reported them
+   * (`knownUsage.usageSource === 'provider'`); otherwise the event carries
+   * no token keys at all plus `usageSource: 'unknown'`, so genuinely
+   * reported zero tokens are distinguishable from unavailable usage and no
+   * counts are ever invented.
+   */
+  private async captureFailedAttemptUsageBounded(
     payload: GatewayDispatchPayload,
     target: ResolvedTargetDto,
     completionId: string,
     outcome: string,
+    knownUsage?: TokenUsage | undefined,
   ): Promise<void> {
-    if (!this.usagePublisher || !payload.tenantId) return;
-    const event: UsageEvent = {
+    if (!this.meteringCapture) return;
+    const event = this.buildAttemptUsageEvent(payload, target, completionId, outcome, knownUsage);
+    if (!event) return;
+    try {
+      await this.meteringCapture.capture(event, { timeoutMs: this.meteringCaptureTimeoutMs });
+    } catch {
+      // The provider request already failed. Metering cleanup is best effort
+      // and bounded; it must never mask the original provider error.
+    }
+  }
+
+  private buildAttemptUsageEvent(
+    payload: GatewayDispatchPayload,
+    target: ResolvedTargetDto,
+    completionId: string,
+    outcome: string,
+    knownUsage?: TokenUsage | undefined,
+  ): UsageEvent | null {
+    if (!payload.tenantId) return null;
+    // Only provider-confirmed counts are recorded. A reported zero is kept
+    // (genuinely confirmed); anything else omits token keys entirely.
+    const confirmed = knownUsage?.usageSource === 'provider' ? knownUsage : undefined;
+    return {
       eventId: `usage_${completionId}`,
       schemaVersion: '1.0.0',
       tenantId: payload.tenantId,
@@ -662,16 +816,21 @@ export class DispatchModelUseCase {
       sourceService: 'model-gateway',
       operation: 'model.completion',
       resourceId: payload.canonicalModelId,
-      measurements: {
-        'tokens.input': 0,
-        'tokens.output': 0,
-        'tokens.total': 0,
-        'units.requests': 1,
-      },
+      measurements: confirmed
+        ? {
+            'tokens.input': confirmed.promptTokens,
+            'tokens.output': confirmed.completionTokens,
+            'tokens.total': confirmed.totalTokens,
+            'units.requests': 1,
+          }
+        : {
+            'units.requests': 1,
+          },
       dimensions: {
         provider: target.provider,
         targetId: target.targetId,
         outcome,
+        usageSource: confirmed ? 'provider' : 'unknown',
       },
       lineage: {
         correlationId: payload.correlationId,
@@ -681,22 +840,5 @@ export class DispatchModelUseCase {
       idempotencyKey: `model.completion:${completionId}`,
       occurredAt: new Date().toISOString(),
     };
-    let timeout: NodeJS.Timeout | undefined;
-    try {
-      await Promise.race([
-        this.usagePublisher.publish(event),
-        new Promise<never>((_, reject) => {
-          timeout = setTimeout(
-            () => reject(new Error('Usage cleanup publication timed out')),
-            2000,
-          );
-        }),
-      ]);
-    } catch {
-      // The provider request already failed. Metering cleanup is best effort and bounded;
-      // successful completions still require broker confirmation before finish is emitted.
-    } finally {
-      if (timeout) clearTimeout(timeout);
-    }
   }
 }

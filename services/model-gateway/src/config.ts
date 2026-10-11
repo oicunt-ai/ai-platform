@@ -15,6 +15,30 @@ export interface GroqProviderConfig {
   readonly baseUrl?: string | undefined;
 }
 
+export interface OutboxDatabaseOptions {
+  readonly host?: string | undefined;
+  readonly port?: number | undefined;
+  readonly database?: string | undefined;
+  readonly user?: string | undefined;
+  readonly password?: string | undefined;
+}
+
+export interface MeteringDrainerOptions {
+  readonly batchSize?: number | undefined;
+  readonly concurrency?: number | undefined;
+  readonly maxAttempts?: number | undefined;
+  readonly baseRetryDelayMs?: number | undefined;
+  readonly maxRetryDelayMs?: number | undefined;
+  readonly leaseMs?: number | undefined;
+  readonly pollIntervalMs?: number | undefined;
+}
+
+export interface MeteringPublisherOptions {
+  readonly confirmTimeoutMs?: number | undefined;
+  readonly reconnectInitialMs?: number | undefined;
+  readonly reconnectMaxMs?: number | undefined;
+}
+
 export interface ModelGatewayConfig {
   readonly serviceName: string;
   readonly environment: Environment;
@@ -33,7 +57,23 @@ export interface ModelGatewayConfig {
   readonly internalToken?: string | undefined;
   readonly rabbitmqUrl?: string | undefined;
   readonly usageExchange: string;
-  readonly enableUsagePublishing?: boolean | undefined;
+  /**
+   * Explicit deployment-controlled metering switch. Always resolved to a
+   * concrete boolean: production requires an explicit 'true'/'false'
+   * setting and fails startup otherwise; other environments default to
+   * disabled. Never implied by NODE_ENV.
+   */
+  readonly enableUsagePublishing: boolean;
+  /** PostgreSQL connection for the durable metering outbox (oicunt_ai). */
+  readonly outboxDatabase: OutboxDatabaseOptions;
+  /** Upper bound for a single durable capture INSERT. */
+  readonly meteringCaptureTimeoutMs: number;
+  /** Interval for the background capture-availability probe. */
+  readonly meteringCaptureCheckIntervalMs: number;
+  /** Outbox drainer tuning (delivery scheduling, leases, retries). */
+  readonly meteringDrainer: MeteringDrainerOptions;
+  /** Publisher tuning (confirms, reconnect backoff). */
+  readonly meteringPublisher: MeteringPublisherOptions;
 }
 
 export function resolveEnvironment(raw?: string): Environment {
@@ -50,6 +90,47 @@ export function resolveEnvironment(raw?: string): Environment {
     default:
       return 'development';
   }
+}
+
+/**
+ * Parses an explicit boolean feature switch. Returns undefined when unset;
+ * throws on any other value so typos can neither silently enable nor
+ * silently disable metering.
+ */
+export function parseExplicitSwitch(raw: string | undefined, name: string): boolean | undefined {
+  if (raw === undefined) {
+    return undefined;
+  }
+  const normalized = raw.trim().toLowerCase();
+  if (normalized === 'true') {
+    return true;
+  }
+  if (normalized === 'false') {
+    return false;
+  }
+  throw new Error(
+    `${name} must be explicitly 'true' or 'false' when set (received '${raw.trim()}')`,
+  );
+}
+
+function resolveUsagePublishing(
+  env: Environment,
+  override: boolean | undefined,
+  rawEnv: string | undefined,
+): boolean {
+  if (override !== undefined) {
+    return override;
+  }
+  const parsed = parseExplicitSwitch(rawEnv, 'ENABLE_USAGE_PUBLISHING');
+  if (parsed !== undefined) {
+    return parsed;
+  }
+  if (env === 'production') {
+    throw new Error(
+      "ENABLE_USAGE_PUBLISHING must be explicitly 'true' or 'false' in production (no implicit activation)",
+    );
+  }
+  return false;
 }
 
 export function loadModelGatewayConfig(
@@ -89,9 +170,83 @@ export function loadModelGatewayConfig(
     rabbitmqUrl: overrides?.rabbitmqUrl ?? process.env['RABBITMQ_URL'],
     usageExchange:
       overrides?.usageExchange ?? process.env['USAGE_RABBITMQ_EXCHANGE'] ?? 'oicunt.usage',
-    enableUsagePublishing:
-      overrides?.enableUsagePublishing ??
-      (env === 'production' || process.env['ENABLE_USAGE_PUBLISHING'] === 'true'),
+    // Explicit deployment-controlled activation: publishing is never
+    // implied by the environment. Production requires an explicit
+    // true/false setting and fails startup without one; other
+    // environments default to disabled.
+    enableUsagePublishing: resolveUsagePublishing(
+      env,
+      overrides?.enableUsagePublishing,
+      process.env['ENABLE_USAGE_PUBLISHING'],
+    ),
+    outboxDatabase: {
+      host:
+        overrides?.outboxDatabase?.host ??
+        process.env['OUTBOX_DB_HOST'] ??
+        process.env['DATABASE_HOST'] ??
+        'localhost',
+      port:
+        overrides?.outboxDatabase?.port ??
+        Number.parseInt(
+          process.env['OUTBOX_DB_PORT'] ?? process.env['DATABASE_PORT'] ?? '5432',
+          10,
+        ),
+      database:
+        overrides?.outboxDatabase?.database ??
+        process.env['OUTBOX_DB_NAME'] ??
+        process.env['DATABASE_NAME'] ??
+        'oicunt_ai',
+      user:
+        overrides?.outboxDatabase?.user ??
+        process.env['OUTBOX_DB_USER'] ??
+        process.env['DATABASE_USER'] ??
+        'postgres',
+      password:
+        overrides?.outboxDatabase?.password ??
+        process.env['OUTBOX_DB_PASSWORD'] ??
+        process.env['DATABASE_PASSWORD'] ??
+        '',
+    },
+    meteringCaptureTimeoutMs:
+      overrides?.meteringCaptureTimeoutMs ??
+      Number.parseInt(process.env['METERING_CAPTURE_TIMEOUT_MS'] ?? '2000', 10),
+    meteringCaptureCheckIntervalMs:
+      overrides?.meteringCaptureCheckIntervalMs ??
+      Number.parseInt(process.env['METERING_CAPTURE_CHECK_INTERVAL_MS'] ?? '15000', 10),
+    meteringDrainer: {
+      batchSize:
+        overrides?.meteringDrainer?.batchSize ??
+        Number.parseInt(process.env['OUTBOX_DRAIN_BATCH_SIZE'] ?? '50', 10),
+      concurrency:
+        overrides?.meteringDrainer?.concurrency ??
+        Number.parseInt(process.env['OUTBOX_DRAIN_CONCURRENCY'] ?? '5', 10),
+      maxAttempts:
+        overrides?.meteringDrainer?.maxAttempts ??
+        Number.parseInt(process.env['OUTBOX_DRAIN_MAX_ATTEMPTS'] ?? '20', 10),
+      baseRetryDelayMs:
+        overrides?.meteringDrainer?.baseRetryDelayMs ??
+        Number.parseInt(process.env['OUTBOX_DRAIN_BASE_DELAY_MS'] ?? '1000', 10),
+      maxRetryDelayMs:
+        overrides?.meteringDrainer?.maxRetryDelayMs ??
+        Number.parseInt(process.env['OUTBOX_DRAIN_MAX_DELAY_MS'] ?? '300000', 10),
+      leaseMs:
+        overrides?.meteringDrainer?.leaseMs ??
+        Number.parseInt(process.env['OUTBOX_DRAIN_LEASE_MS'] ?? '300000', 10),
+      pollIntervalMs:
+        overrides?.meteringDrainer?.pollIntervalMs ??
+        Number.parseInt(process.env['OUTBOX_DRAIN_POLL_MS'] ?? '1000', 10),
+    },
+    meteringPublisher: {
+      confirmTimeoutMs:
+        overrides?.meteringPublisher?.confirmTimeoutMs ??
+        Number.parseInt(process.env['METERING_PUBLISH_CONFIRM_TIMEOUT_MS'] ?? '10000', 10),
+      reconnectInitialMs:
+        overrides?.meteringPublisher?.reconnectInitialMs ??
+        Number.parseInt(process.env['METERING_RECONNECT_INITIAL_MS'] ?? '1000', 10),
+      reconnectMaxMs:
+        overrides?.meteringPublisher?.reconnectMaxMs ??
+        Number.parseInt(process.env['METERING_RECONNECT_MAX_MS'] ?? '30000', 10),
+    },
     maxBodySizeBytes: overrides?.maxBodySizeBytes ?? 1048576,
     defaultTimeoutMs: overrides?.defaultTimeoutMs ?? 120000,
     groq: {
@@ -135,7 +290,14 @@ export function loadModelGatewayConfig(
   if (env === 'production') {
     const missing = [
       ['MODEL_GATEWAY_INTERNAL_TOKEN', config.internalToken],
-      ['RABBITMQ_URL', config.rabbitmqUrl],
+      ...(config.enableUsagePublishing
+        ? [
+            ['RABBITMQ_URL', config.rabbitmqUrl],
+            ['OUTBOX_DB_HOST (or DATABASE_HOST)', config.outboxDatabase.host],
+            ['OUTBOX_DB_NAME (or DATABASE_NAME)', config.outboxDatabase.database],
+            ['OUTBOX_DB_USER (or DATABASE_USER)', config.outboxDatabase.user],
+          ]
+        : []),
     ].filter(([, value]) => !value || value.trim().length === 0);
     if (missing.length > 0) {
       throw new Error(

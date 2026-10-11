@@ -121,11 +121,8 @@ describe('DispatchModelUseCase - Streaming Execution', () => {
     const useCase = new DispatchModelUseCase({
       adapterRegistry: fixture.adapterRegistry,
       circuitBreakerStore: fixture.circuitBreakerStore,
-      usagePublisher: {
-        async start() {},
-        isReady: () => true,
-        async close() {},
-        async publish(event) {
+      meteringCapture: {
+        async capture(event) {
           order.push(`usage:${event.measurements['tokens.total']}`);
         },
       },
@@ -208,11 +205,8 @@ describe('DispatchModelUseCase - Streaming Execution', () => {
     const useCase = new DispatchModelUseCase({
       adapterRegistry: fixture.adapterRegistry,
       circuitBreakerStore: fixture.circuitBreakerStore,
-      usagePublisher: {
-        async start() {},
-        isReady: () => true,
-        async close() {},
-        async publish(event) {
+      meteringCapture: {
+        async capture(event) {
           published.push({
             measurements: event.measurements as Record<string, number>,
             dimensions: event.dimensions as Record<string, string>,
@@ -232,8 +226,10 @@ describe('DispatchModelUseCase - Streaming Execution', () => {
     expect(events.map((event) => event.event)).toEqual(['token', 'error']);
     expect(published).toHaveLength(1);
     expect(published[0]?.measurements['units.requests']).toBe(1);
-    expect(published[0]?.measurements['tokens.total']).toBe(0);
+    // Unknown usage carries no token keys at all (never invented zeros).
+    expect(published[0]?.measurements['tokens.total']).toBeUndefined();
     expect(published[0]?.dimensions['outcome']).toBe('STREAM_INTERRUPTED');
+    expect(published[0]?.dimensions['usageSource']).toBe('unknown');
   });
 
   it('propagates cancellation signal to provider when stream is aborted', async () => {

@@ -131,6 +131,12 @@ export interface StreamErrorPayload {
   readonly code: string;
   readonly message: string;
   readonly details?: unknown;
+  /**
+   * Last provider-reported token counts known when the stream failed, if
+   * the adapter observed any usage object before the failure. Absent means
+   * usage is unknown; metering must not invent counts in that case.
+   */
+  readonly usage?: TokenUsage | undefined;
 }
 
 /**

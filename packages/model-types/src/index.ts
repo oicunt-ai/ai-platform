@@ -81,6 +81,13 @@ export interface TokenUsage {
   readonly totalTokens: number;
   readonly reasoningTokens?: number | undefined;
   readonly cachedTokens?: number | undefined;
+  /**
+   * Provenance of the token counts. 'provider' means the numbers came from
+   * the provider's reported usage object; 'unknown' (or absent, for older
+   * adapters) means the counts were defaulted and must not be treated as
+   * confirmed measurements. Metering treats unknown usage as unconfirmed.
+   */
+  readonly usageSource?: 'provider' | 'unknown' | undefined;
 }
 
 /**

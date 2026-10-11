@@ -1,4 +1,4 @@
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+﻿import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import type { CanonicalModelId, ReasoningEffortLevel } from '@oicunt-ai/model-types';
 import {
   CanonicalModel,
@@ -11,7 +11,7 @@ import { ModelGatewayService } from '@oicunt-ai/service-model-gateway';
 import { loadModelGatewayConfig } from '../../services/model-gateway/src/config.js';
 import { InMemoryAdapterRegistry } from '../../services/model-gateway/src/infrastructure/adapters/in-memory-adapter-registry.js';
 import { FakeProviderAdapter } from '../../services/model-gateway/tests/test-doubles/fake-provider-adapter.js';
-import type { UsagePublisherPort } from '../../services/model-gateway/src/application/ports/usage-publisher.port.js';
+import type { MeteringCapturePort } from '../../services/model-gateway/src/application/ports/metering-capture.port.js';
 import type { UsageEvent } from '@oicunt-ai/usage-types';
 import { InferenceService } from '@oicunt-ai/service-inference';
 import { loadInferenceConfig } from '../../services/inference/src/config.js';
@@ -43,19 +43,14 @@ describe('E2E - Fake Provider Completion Chain', () => {
   let orchestratorPort = 0;
   let fakeMemory: FakeMemory;
   let fakeAdapter: FakeProviderAdapter;
-  const publishedEvents: UsageEvent[] = [];
-  let publisherShouldFail = false;
+  const capturedEvents: UsageEvent[] = [];
+  let captureShouldFail = false;
 
-  const stubPublisher: UsagePublisherPort = {
-    async start(): Promise<void> {},
-    async publish(event: UsageEvent): Promise<void> {
-      if (publisherShouldFail) throw new Error('E2E stub usage publisher unavailable');
-      publishedEvents.push(event);
+  const stubCapture: MeteringCapturePort = {
+    async capture(event: UsageEvent): Promise<void> {
+      if (captureShouldFail) throw new Error('E2E stub metering capture unavailable');
+      capturedEvents.push(event);
     },
-    isReady(): boolean {
-      return true;
-    },
-    async close(): Promise<void> {},
   };
 
   function clientHeaders(correlationId: string): Record<string, string> {
@@ -144,7 +139,7 @@ describe('E2E - Fake Provider Completion Chain', () => {
     modelGatewayService = new ModelGatewayService({
       config: mgwConfig,
       adapterRegistry: new InMemoryAdapterRegistry([fakeAdapter]),
-      usagePublisher: stubPublisher,
+      meteringCapture: stubCapture,
     });
     const gatewayPort = await modelGatewayService.start();
 
@@ -203,8 +198,8 @@ describe('E2E - Fake Provider Completion Chain', () => {
   });
 
   beforeEach(() => {
-    publishedEvents.length = 0;
-    publisherShouldFail = false;
+    capturedEvents.length = 0;
+    captureShouldFail = false;
     fakeMemory.shouldFailCheckpointWith = null;
     fakeMemory.shouldFailGetContextWith = null;
     fakeMemory.conversations.clear();
@@ -232,8 +227,8 @@ describe('E2E - Fake Provider Completion Chain', () => {
     expect(body.data?.model).toBe(REASONING_MODEL);
 
     expect(fakeMemory.recordedCheckpoints).toHaveLength(1);
-    expect(publishedEvents.length).toBeGreaterThanOrEqual(1);
-    const usage = publishedEvents[0]!;
+    expect(capturedEvents.length).toBeGreaterThanOrEqual(1);
+    const usage = capturedEvents[0]!;
     expect(usage.tenantId).toBe('tnt_e2e');
     expect(usage.idempotencyKey.startsWith('model.completion:')).toBe(true);
     expect(usage.measurements['units.requests']).toBe(1);
@@ -264,7 +259,7 @@ describe('E2E - Fake Provider Completion Chain', () => {
     expect(eventNames[eventNames.length - 1]).toBe('finish');
     expect(eventNames).not.toContain('error');
     expect(fakeMemory.recordedCheckpoints).toHaveLength(1);
-    expect(publishedEvents.length).toBeGreaterThanOrEqual(1);
+    expect(capturedEvents.length).toBeGreaterThanOrEqual(1);
   });
 
   it('withholds finish when the memory checkpoint fails', async () => {
@@ -369,8 +364,8 @@ describe('E2E - Fake Provider Completion Chain', () => {
     expect(fakeMemory.recordedCheckpoints).toHaveLength(0);
   });
 
-  it('fails the turn when usage confirmation fails so no success is reported', async () => {
-    publisherShouldFail = true;
+  it('fails the turn honestly when durable capture fails, without blaming the provider', async () => {
+    captureShouldFail = true;
 
     const res = await fetch(`http://127.0.0.1:${orchestratorPort}/internal/v1/orchestrator/chat`, {
       method: 'POST',
@@ -382,10 +377,33 @@ describe('E2E - Fake Provider Completion Chain', () => {
       }),
     });
 
+    // Fail-closed but honest: the turn fails because accounting could not be
+    // confirmed, NOT because the provider failed.
     expect(res.status).toBeGreaterThanOrEqual(500);
     const body = (await res.json()) as any;
     expect(body.success).toBe(false);
-    expect(publishedEvents).toHaveLength(0);
+    expect(capturedEvents).toHaveLength(0);
     expect(fakeMemory.recordedCheckpoints).toHaveLength(0);
+
+    // The provider target was not marked unhealthy by the metering failure:
+    // the very next request succeeds without any fallback delay.
+    captureShouldFail = false;
+
+    const retry = await fetch(
+      `http://127.0.0.1:${orchestratorPort}/internal/v1/orchestrator/chat`,
+      {
+        method: 'POST',
+        headers: clientHeaders('corr-e2e-usage-retry'),
+        body: JSON.stringify({
+          model: REASONING_MODEL,
+          conversationId: 'conv_e2e_usage_retry',
+          messages: [{ role: 'user', content: 'Usage must confirm' }],
+        }),
+      },
+    );
+
+    expect(retry.status).toBe(200);
+    const retryBody = (await retry.json()) as any;
+    expect(retryBody.success).toBe(true);
   });
 });

@@ -11,7 +11,8 @@ export type GatewayErrorCode =
   | 'STREAM_INTERRUPTED'
   | 'REQUEST_CANCELLED'
   | 'ALL_TARGETS_EXHAUSTED'
-  | 'INTERNAL_GATEWAY_ERROR';
+  | 'INTERNAL_GATEWAY_ERROR'
+  | 'METERING_CAPTURE_UNAVAILABLE';
 
 export interface GatewayErrorPayload {
   readonly code: GatewayErrorCode;
@@ -262,6 +263,36 @@ export class InternalGatewayError extends GatewayError {
       retryable: false,
       canonicalModelId,
       correlationId,
+    });
+  }
+}
+
+/**
+ * Durable metering capture could not be confirmed after a provider call.
+ *
+ * This error is deliberately separated from provider failures: it must
+ * never mark a provider target unhealthy and must never trigger another
+ * automatic provider attempt. It is retryable at the caller level because
+ * a retry performs a brand-new provider call with a brand-new completion
+ * identity (a new provider call means new consumption, so a new event).
+ *
+ * A post-provider capture failure can still leave provider-side usage
+ * requiring out-of-band reconciliation (see the metering outbox design):
+ * this error reports the accounting gap honestly instead of claiming
+ * zero unbilled consumption.
+ */
+export class MeteringCaptureUnavailableError extends GatewayError {
+  constructor(canonicalModelId: string, correlationId: string, targetId?: string) {
+    super({
+      code: 'METERING_CAPTURE_UNAVAILABLE',
+      statusCode: 503,
+      message:
+        'Usage metering capture is temporarily unavailable; the AI provider result ' +
+        'was not durably recorded. Safe to retry as a new request.',
+      retryable: true,
+      canonicalModelId,
+      correlationId,
+      targetId,
     });
   }
 }

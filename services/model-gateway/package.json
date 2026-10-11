@@ -1,4 +1,4 @@
-{
+﻿{
   "name": "@oicunt-ai/service-model-gateway",
   "version": "0.1.0",
   "private": true,
@@ -13,8 +13,9 @@
     }
   },
   "scripts": {
-    "build": "tsc -b",
+    "build": "tsc -b && node -e \"const fs = require('node:fs'); fs.mkdirSync('dist/infrastructure/database/migrations', { recursive: true }); fs.cpSync('src/infrastructure/database/migrations', 'dist/infrastructure/database/migrations', { recursive: true });\"",
     "start": "node ./dist/start.js",
+    "migrate": "node ./dist/migrate.js",
     "type-check": "tsc -b --noEmit"
   },
   "dependencies": {
@@ -23,9 +24,11 @@
     "@oicunt-ai/observability": "workspace:*",
     "@oicunt-ai/internal-contracts": "workspace:*",
     "@oicunt-ai/usage-types": "workspace:*",
-    "amqplib": "^2.2.0"
+    "amqplib": "^2.2.0",
+    "pg": "^8.13.1"
   },
   "devDependencies": {
-    "@types/amqplib": "^0.10.8"
+    "@types/amqplib": "^0.10.8",
+    "@types/pg": "^8.11.10"
   }
 }

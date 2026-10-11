@@ -15,7 +15,7 @@ import { loadModelGatewayConfig } from '../../../src/config.js';
 import { ModelGatewayService } from '../../../src/service.js';
 import { InMemoryAdapterRegistry } from '../../../src/infrastructure/adapters/in-memory-adapter-registry.js';
 import { InMemoryCircuitBreakerStore } from '../../../src/infrastructure/circuit-breaker/in-memory-circuit-breaker-store.js';
-import type { UsagePublisherPort } from '../../../src/application/ports/usage-publisher.port.js';
+import type { MeteringCapturePort } from '../../../src/application/ports/metering-capture.port.js';
 import { DispatchModelUseCase } from '../../../src/application/use-cases/dispatch-model.use-case.js';
 
 describe('GroqProviderAdapter', () => {
@@ -294,6 +294,7 @@ describe('GroqProviderAdapter', () => {
         completionTokens: 10,
         totalTokens: 28,
         reasoningTokens: 4,
+        usageSource: 'provider',
       });
     }
   });
@@ -319,6 +320,8 @@ describe('GroqProviderAdapter', () => {
         promptTokens: 0,
         completionTokens: 0,
         totalTokens: 0,
+        // Defaulted counts are explicitly unconfirmed, never measurements.
+        usageSource: 'unknown',
       });
     }
   });
@@ -371,18 +374,15 @@ describe('GroqProviderAdapter', () => {
     const groqAdapter = new GroqProviderAdapter({ apiKey: 'k' });
     const registry = new InMemoryAdapterRegistry([groqAdapter]);
     const published: { idempotencyKey: string; tenantId: string }[] = [];
-    const stubPublisher: UsagePublisherPort = {
-      start: async () => {},
-      isReady: () => true,
-      close: async () => {},
-      publish: async (event) => {
+    const stubCapture: MeteringCapturePort = {
+      capture: async (event) => {
         published.push({ idempotencyKey: event.idempotencyKey, tenantId: event.tenantId });
       },
     };
     const useCase = new DispatchModelUseCase({
       adapterRegistry: registry,
       circuitBreakerStore: new InMemoryCircuitBreakerStore(),
-      usagePublisher: stubPublisher,
+      meteringCapture: stubCapture,
     });
 
     const target = createTarget();

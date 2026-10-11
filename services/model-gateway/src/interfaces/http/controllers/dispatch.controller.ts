@@ -26,12 +26,16 @@ export class DispatchController {
     try {
       const rawBody = await parseJsonBody<GatewayDispatchPayload>(req, this.maxBodySizeBytes);
 
-      // Merge context metadata
+      // Merge context metadata. Identity precedence is context (derived
+      // from the authenticated caller) over raw body, and nothing is ever
+      // manufactured: an absent actorId stays absent and is omitted from
+      // billing events downstream (valid), instead of a synthetic value
+      // the consumer would reject.
       const payload: GatewayDispatchPayload = {
         ...rawBody,
         requestId: context.requestId,
         correlationId: context.correlationId,
-        actorId: context.actorId ?? rawBody.actorId ?? 'system',
+        actorId: context.actorId ?? rawBody.actorId,
         userId: context.userId ?? rawBody.userId,
         tenantId: context.tenantId ?? rawBody.tenantId,
       };

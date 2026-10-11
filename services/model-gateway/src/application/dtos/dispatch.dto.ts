@@ -50,7 +50,12 @@ export interface GatewayDispatchPayload {
   readonly routingPolicy: GatewayRoutingPolicyDto;
   readonly tenantId?: string | undefined;
   readonly userId?: string | undefined;
-  readonly actorId: string;
+  /**
+   * Service or user identity the work is attributed to. Optional: omitted
+   * when unknown (valid downstream). Never fabricated — synthetic values
+   * such as 'system' are rejected by usage validation.
+   */
+  readonly actorId?: string | undefined;
   readonly metadata?: Record<string, unknown> | undefined;
   readonly deadlineMs?: number | undefined;
   /** Whether reasoning/thinking data may be exposed to caller in stream/completion */

@@ -126,6 +126,7 @@ export class GroqProviderAdapter implements IProviderAdapter {
     }
 
     const latencyMs = Date.now() - startTime;
+    const usageSeen = data.usage !== undefined && data.usage !== null;
     const promptTokens = data.usage?.prompt_tokens ?? 0;
     const completionTokens = data.usage?.completion_tokens ?? 0;
 
@@ -143,6 +144,7 @@ export class GroqProviderAdapter implements IProviderAdapter {
         totalTokens: data.usage?.total_tokens ?? promptTokens + completionTokens,
         reasoningTokens: data.usage?.completion_tokens_details?.reasoning_tokens,
         cachedTokens: data.usage?.prompt_tokens_details?.cached_tokens,
+        usageSource: usageSeen ? ('provider' as const) : ('unknown' as const),
       },
       latencyMs,
     };
@@ -219,6 +221,10 @@ export class GroqProviderAdapter implements IProviderAdapter {
     let totalTokens: number | undefined;
     let reasoningTokens: number | undefined;
     let cachedTokens: number | undefined;
+    // Provenance: true once any provider usage object has been observed.
+    // Without it the counts below are defaults, not measurements, and
+    // metering must treat them as unconfirmed (usageSource 'unknown').
+    let usageSeen = false;
     let finishReason: FinishReason = 'stop';
 
     try {
@@ -263,9 +269,26 @@ export class GroqProviderAdapter implements IProviderAdapter {
           };
 
           if (chunk.error) {
+            // Attach last-known provider usage when observed so metering can
+            // record confirmed counts; omit it otherwise (unknown usage must
+            // never be invented).
+            const errorUsage = usageSeen
+              ? {
+                  promptTokens,
+                  completionTokens,
+                  totalTokens: totalTokens ?? promptTokens + completionTokens,
+                  reasoningTokens,
+                  cachedTokens,
+                  usageSource: 'provider' as const,
+                }
+              : undefined;
             yield {
               event: 'error',
-              data: { code: 'PROVIDER_ERROR', message: 'Groq stream error' },
+              data: {
+                code: 'PROVIDER_ERROR',
+                message: 'Groq stream error',
+                ...(errorUsage ? { usage: errorUsage } : {}),
+              },
             };
             continue;
           }
@@ -284,6 +307,7 @@ export class GroqProviderAdapter implements IProviderAdapter {
           }
 
           if (chunk.usage) {
+            usageSeen = true;
             promptTokens = chunk.usage.prompt_tokens ?? promptTokens;
             completionTokens = chunk.usage.completion_tokens ?? completionTokens;
             totalTokens = chunk.usage.total_tokens ?? totalTokens;
@@ -304,6 +328,7 @@ export class GroqProviderAdapter implements IProviderAdapter {
             totalTokens: totalTokens ?? promptTokens + completionTokens,
             reasoningTokens,
             cachedTokens,
+            usageSource: usageSeen ? ('provider' as const) : ('unknown' as const),
           },
         },
       };

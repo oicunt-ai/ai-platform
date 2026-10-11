@@ -9,6 +9,8 @@ export interface RouterDependencies {
   readonly serviceName: string;
   readonly version: string;
   readonly isReady: () => boolean;
+  /** Optional per-signal metering detail for /readyz; absent when metering is disabled. */
+  readonly meteringChecks?: (() => Record<string, 'ok' | 'failed'>) | undefined;
   readonly allowedServiceIdentities: readonly string[];
   readonly internalToken?: string | undefined;
   readonly environment?: string | undefined;
@@ -30,7 +32,13 @@ export function createHttpRouter(
     }
 
     if (method === 'GET' && (pathname === '/readyz' || pathname === '/health/readiness')) {
-      sendReadinessResponse(res, deps.isReady(), deps.serviceName, deps.version);
+      sendReadinessResponse(
+        res,
+        deps.isReady(),
+        deps.serviceName,
+        deps.version,
+        deps.meteringChecks?.(),
+      );
       return;
     }
 

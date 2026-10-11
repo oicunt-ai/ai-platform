@@ -391,10 +391,16 @@ importers:
       amqplib:
         specifier: ^2.2.0
         version: 2.2.0
+      pg:
+        specifier: ^8.13.1
+        version: 8.23.1
     devDependencies:
       '@types/amqplib':
         specifier: ^0.10.8
         version: 0.10.8
+      '@types/pg':
+        specifier: ^8.11.10
+        version: 8.23.1
 
   services/model-registry:
     dependencies:
