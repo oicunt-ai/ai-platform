@@ -133,6 +133,92 @@ function resolveUsagePublishing(
   return false;
 }
 
+/**
+ * Resolved, explicitly-configured migration target. Every field is
+ * guaranteed to come from an intentional setting — never a built-in
+ * default — so a schema-changing operation cannot silently land on
+ * localhost:5432 or any other assumed destination.
+ */
+export interface ExplicitOutboxTarget {
+  readonly host: string;
+  readonly port: number;
+  readonly database: string;
+  readonly user: string;
+  readonly password: string;
+}
+
+function cleanEnvValue(value: string | undefined): string | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  const text = value.trim();
+  return text === '' ? undefined : text;
+}
+
+/**
+ * Resolves the database destination for the explicit migrate command from
+ * OUTBOX_DB_* (preferred) or DATABASE_* variables, preserving the same
+ * precedence as the runtime pool. Refuses to proceed when host, port,
+ * database, user, or password is missing, blank, or malformed: there are
+ * no defaults here. Accepts an explicit source record for tests; defaults
+ * to the process environment.
+ */
+export function requireExplicitOutboxTarget(
+  source?: Record<string, string | undefined>,
+): ExplicitOutboxTarget {
+  const env = source ?? process.env;
+  const pick = (...names: string[]): string | undefined => {
+    for (const name of names) {
+      const value = cleanEnvValue(env[name]);
+      if (value !== undefined) {
+        return value;
+      }
+    }
+    return undefined;
+  };
+  const host = pick('OUTBOX_DB_HOST', 'DATABASE_HOST');
+  const portRaw = pick('OUTBOX_DB_PORT', 'DATABASE_PORT');
+  const database = pick('OUTBOX_DB_NAME', 'DATABASE_NAME');
+  const user = pick('OUTBOX_DB_USER', 'DATABASE_USER');
+  const password = pick('OUTBOX_DB_PASSWORD', 'DATABASE_PASSWORD');
+  const missing: string[] = [];
+  if (host === undefined) {
+    missing.push('OUTBOX_DB_HOST (or DATABASE_HOST)');
+  }
+  if (database === undefined) {
+    missing.push('OUTBOX_DB_NAME (or DATABASE_NAME)');
+  }
+  if (user === undefined) {
+    missing.push('OUTBOX_DB_USER (or DATABASE_USER)');
+  }
+  if (password === undefined) {
+    missing.push('OUTBOX_DB_PASSWORD (or DATABASE_PASSWORD)');
+  }
+  let port = Number.NaN;
+  if (portRaw !== undefined) {
+    const parsed = Number(portRaw);
+    if (Number.isInteger(parsed)) {
+      port = parsed;
+    }
+  }
+  if (!Number.isInteger(port) || port < 1 || port > 65535) {
+    missing.push('OUTBOX_DB_PORT (or DATABASE_PORT, integer 1-65535)');
+  }
+  if (missing.length > 0) {
+    throw new Error(
+      'Refusing to migrate without an explicitly configured destination. Set: ' +
+        missing.join(', '),
+    );
+  }
+  return {
+    host: host as string,
+    port,
+    database: database as string,
+    user: user as string,
+    password: password as string,
+  };
+}
+
 export function loadModelGatewayConfig(
   overrides?: Partial<ModelGatewayConfig>,
 ): ModelGatewayConfig {

@@ -15,7 +15,7 @@
   "scripts": {
     "build": "tsc -b && node -e \"const fs = require('node:fs'); fs.mkdirSync('dist/infrastructure/database/migrations', { recursive: true }); fs.cpSync('src/infrastructure/database/migrations', 'dist/infrastructure/database/migrations', { recursive: true });\"",
     "start": "node ./dist/start.js",
-    "migrate": "node ./dist/migrate.js",
+    "migrate": "node --env-file=../../.env ./dist/migrate.js",
     "type-check": "tsc -b --noEmit"
   },
   "dependencies": {

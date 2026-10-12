@@ -1,6 +1,7 @@
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import type { PoolClient } from 'pg';
 import type { OutboxDatabasePool } from './connection.js';
 
 export interface MigrationResult {
@@ -26,56 +27,87 @@ export class OutboxDatabaseMigrator {
   constructor(private readonly db: OutboxDatabasePool) {}
 
   public async runMigrations(): Promise<MigrationResult> {
-    await this.ensureMigrationTable();
-
-    // Acquire PostgreSQL advisory lock to prevent concurrent migrations across replicas
-    await this.db.query('SELECT pg_advisory_lock($1)', [OutboxDatabaseMigrator.ADVISORY_LOCK_ID]);
-
+    const migrationFiles = this.getMigrationFiles();
+    const client = await this.db.getClient();
+    // Tracks whether the unlock outcome left cleanup UNCERTAIN (unlock
+    // threw or the connection was lost). An uncertain session may still
+    // hold the advisory lock and must be destroyed, never pooled.
+    let unlockUncertain = false;
     try {
-      const appliedSet = await this.getAppliedMigrations();
-      const migrationFiles = this.getMigrationFiles();
+      await client.query('SELECT pg_advisory_lock($1)', [OutboxDatabaseMigrator.ADVISORY_LOCK_ID]);
+      try {
+        await this.ensureMigrationTable(client);
+        const appliedSet = await this.getAppliedMigrations(client);
 
-      const newlyApplied: string[] = [];
-      const alreadyApplied: string[] = [];
+        const newlyApplied: string[] = [];
+        const alreadyApplied: string[] = [];
 
-      for (const file of migrationFiles) {
-        if (appliedSet.has(file.name)) {
-          alreadyApplied.push(file.name);
-          continue;
+        for (const file of migrationFiles) {
+          if (appliedSet.has(file.name)) {
+            alreadyApplied.push(file.name);
+            continue;
+          }
+
+          try {
+            await client.query('BEGIN');
+            await client.query(file.sql);
+            await client.query('INSERT INTO model_gateway_outbox._migrations (name) VALUES ($1)', [
+              file.name,
+            ]);
+            await client.query('COMMIT');
+          } catch (error) {
+            await client.query('ROLLBACK');
+            throw error;
+          }
+
+          newlyApplied.push(file.name);
         }
 
-        const client = await this.db.getClient();
+        return {
+          applied: Object.freeze(newlyApplied),
+          alreadyApplied: Object.freeze(alreadyApplied),
+        };
+      } finally {
+        // Unlock on the SAME session that acquired the lock. Three outcomes:
+        // - true: released cleanly -> the client returns to the pool.
+        // - false: this session provably holds no lock -> safe to pool.
+        //   (Unreachable in practice — only this session ever touches the
+        //   lock — but handled explicitly rather than assumed.)
+        // - throw: cleanup UNCERTAIN, e.g. connection lost mid-unlock with
+        //   the session possibly still alive and holding the lock.
         try {
-          await client.query('BEGIN');
-          await client.query(file.sql);
-          await client.query('INSERT INTO model_gateway_outbox._migrations (name) VALUES ($1)', [
-            file.name,
+          await client.query<{ pg_advisory_unlock: boolean }>('SELECT pg_advisory_unlock($1)', [
+            OutboxDatabaseMigrator.ADVISORY_LOCK_ID,
           ]);
-          await client.query('COMMIT');
-        } catch (error) {
-          await client.query('ROLLBACK');
-          throw error;
-        } finally {
-          client.release();
+          // A `false` result means this session provably holds no lock, so
+          // normal pooling below is safe. (Unreachable in practice — only
+          // this session ever touches the lock — but the certain outcome
+          // needs no special handling either way.)
+        } catch {
+          // Never mask the migration result: record uncertainty and let the
+          // outer finally destroy the connection. A session-scoped lock dies
+          // with its session, so destruction always cleans up.
+          unlockUncertain = true;
         }
-
-        newlyApplied.push(file.name);
       }
-
-      return {
-        applied: Object.freeze(newlyApplied),
-        alreadyApplied: Object.freeze(alreadyApplied),
-      };
     } finally {
-      await this.db.query('SELECT pg_advisory_unlock($1)', [
-        OutboxDatabaseMigrator.ADVISORY_LOCK_ID,
-      ]);
+      if (unlockUncertain) {
+        // Destroy instead of pooling: a possibly lock-bearing session must
+        // never be handed to another borrower (a pooled leak would make a
+        // later migrator's blocking lock return instantly on the same
+        // session, breaking mutual exclusion).
+        client.release(
+          new Error('Uncertain advisory-lock cleanup; destroying connection instead of pooling'),
+        );
+      } else {
+        client.release();
+      }
     }
   }
 
-  private async ensureMigrationTable(): Promise<void> {
-    await this.db.query('CREATE SCHEMA IF NOT EXISTS model_gateway_outbox');
-    await this.db.query(`
+  private async ensureMigrationTable(client: PoolClient): Promise<void> {
+    await client.query('CREATE SCHEMA IF NOT EXISTS model_gateway_outbox');
+    await client.query(`
       CREATE TABLE IF NOT EXISTS model_gateway_outbox._migrations (
         name VARCHAR(255) PRIMARY KEY,
         applied_at TIMESTAMPTZ NOT NULL DEFAULT NOW()
@@ -83,8 +115,8 @@ export class OutboxDatabaseMigrator {
     `);
   }
 
-  private async getAppliedMigrations(): Promise<Set<string>> {
-    const res = await this.db.query<{ name: string }>(
+  private async getAppliedMigrations(client: PoolClient): Promise<Set<string>> {
+    const res = await client.query<{ name: string }>(
       'SELECT name FROM model_gateway_outbox._migrations ORDER BY name ASC',
     );
     return new Set(res.rows.map((row) => row.name));
