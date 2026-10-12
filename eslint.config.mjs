@@ -22,6 +22,9 @@ export default tseslint.config(
       '**/coverage/**',
       '**/.turbo/**',
       '**/*.tsbuildinfo',
+      // Pinned Platform checkout for integration tests (see
+      // .github/workflows/ci.yml): never lint a foreign repository.
+      'platform/**',
     ],
   },
   {

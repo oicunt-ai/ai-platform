@@ -45,8 +45,32 @@ jobs:
       - name: Type check
         run: pnpm type-check
 
+      # Deterministic Platform dependency for the authenticated multi-hop
+      # integration test: pinned revision (must match PLATFORM_GATEWAY_PINNED_SHA
+      # in tests/integration/platform-gateway-dist.ts — update both together),
+      # checked out as a sibling so the existing ../platform layout resolves,
+      # with the api-gateway distribution built before tests run.
+      - name: Checkout Platform dependency
+        uses: actions/checkout@v4
+        with:
+          repository: oicunt-ai/platform
+          ref: e000278e9c4d79ad15c4e418413fac61a01e285f
+          path: platform
+
+      - name: Install Platform dependencies
+        run: pnpm install --frozen-lockfile
+        working-directory: platform
+
+      - name: Build Platform Gateway
+        run: pnpm --filter @oicunt/service-api-gateway build
+        working-directory: platform
+
       - name: Run tests
         run: pnpm test
+        env:
+          # Resolves the pinned Platform checkout prepared above, independent
+          # of the ../platform sibling fallback used in local development.
+          PLATFORM_REPO_ROOT: ${{ github.workspace }}/platform
 
       - name: Build packages
         run: pnpm build

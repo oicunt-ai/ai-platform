@@ -8,6 +8,11 @@ export default defineConfig({
       '@oicunt-ai/ai-types': resolve(import.meta.dirname, 'packages/ai-types/src/index.ts'),
       '@oicunt-ai/tool-types': resolve(import.meta.dirname, 'packages/tool-types/src/index.ts'),
       '@oicunt-ai/agent-types': resolve(import.meta.dirname, 'packages/agent-types/src/index.ts'),
+      '@oicunt-ai/internal-contracts': resolve(
+        import.meta.dirname,
+        'packages/internal-contracts/src/index.ts',
+      ),
+      '@oicunt-ai/usage-types': resolve(import.meta.dirname, 'packages/usage-types/src/index.ts'),
       '@oicunt-ai/mcp-types': resolve(import.meta.dirname, 'packages/mcp-types/src/index.ts'),
       '@oicunt-ai/observability': resolve(
         import.meta.dirname,

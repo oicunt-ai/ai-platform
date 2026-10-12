@@ -1,6 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
-import { resolve } from 'node:path';
-import { pathToFileURL } from 'node:url';
+import { resolvePlatformGatewayDist } from './platform-gateway-dist.js';
 
 import {
   CanonicalModel,
@@ -481,12 +480,11 @@ describe('Step 6 - Internal Service Authentication Integration Tests', () => {
       orchestratorService = new AiOrchestratorService({ config: orchConfig });
       orchestratorPort = await orchestratorService.start();
 
-      // 5. Start Platform API Gateway with internal service secret
-      const gatewayDistPath = resolve(
-        process.cwd(),
-        '../platform/services/api-gateway/dist/index.js',
-      );
-      const gatewayModuleUrl = pathToFileURL(gatewayDistPath).href;
+      // 5. Start Platform API Gateway with internal service secret.
+      // The distribution is resolved deterministically (pinned Platform
+      // revision, built api-gateway package); a missing dependency throws
+      // an actionable error instead of silently weakening this test.
+      const gatewayModuleUrl = resolvePlatformGatewayDist();
       const {
         GatewayServiceInstance,
         StaticTokenVerifier,

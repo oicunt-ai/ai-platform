@@ -10,6 +10,7 @@
       "@oicunt-ai/ai-types": ["./packages/ai-types/src/index.ts"],
       "@oicunt-ai/tool-types": ["./packages/tool-types/src/index.ts"],
       "@oicunt-ai/agent-types": ["./packages/agent-types/src/index.ts"],
+      "@oicunt-ai/internal-contracts": ["./packages/internal-contracts/src/index.ts"],
       "@oicunt-ai/mcp-types": ["./packages/mcp-types/src/index.ts"],
       "@oicunt-ai/usage-types": ["./packages/usage-types/src/index.ts"],
       "@oicunt-ai/observability": ["./packages/observability/src/index.ts"],
