@@ -233,6 +233,204 @@ describe('environment handling', () => {
   });
 });
 
+describe('model gateway metering forwarding', () => {
+  // Mirrors MODEL_GATEWAY_METERING_KEYS in scripts/dev-up-lib.mjs. Kept as a
+  // literal here so the test file needs no change to the launcher's .d.mts
+  // contract surface; test 9 below asserts the full set is forwarded.
+  const METERING_KEYS = [
+    'ENABLE_USAGE_PUBLISHING',
+    'OUTBOX_DB_HOST',
+    'OUTBOX_DB_PORT',
+    'OUTBOX_DB_NAME',
+    'OUTBOX_DB_USER',
+    'OUTBOX_DB_PASSWORD',
+    'METERING_CAPTURE_TIMEOUT_MS',
+    'METERING_CAPTURE_CHECK_INTERVAL_MS',
+    'OUTBOX_DRAIN_BATCH_SIZE',
+    'OUTBOX_DRAIN_CONCURRENCY',
+    'OUTBOX_DRAIN_MAX_ATTEMPTS',
+    'OUTBOX_DRAIN_BASE_DELAY_MS',
+    'OUTBOX_DRAIN_MAX_DELAY_MS',
+    'OUTBOX_DRAIN_LEASE_MS',
+    'OUTBOX_DRAIN_POLL_MS',
+    'METERING_PUBLISH_CONFIRM_TIMEOUT_MS',
+    'METERING_RECONNECT_INITIAL_MS',
+    'METERING_RECONNECT_MAX_MS',
+    'USAGE_RABBITMQ_EXCHANGE',
+    'MAX_ATTEMPTS_PER_TARGET',
+    'MAX_TOTAL_EXECUTION_ATTEMPTS',
+    'MAX_FALLBACK_ATTEMPTS',
+  ];
+  const FAKE_OUTBOX_DB: Record<string, string> = {
+    OUTBOX_DB_HOST: '127.0.0.1',
+    OUTBOX_DB_PORT: '5433',
+    OUTBOX_DB_NAME: 'oicunt_ai',
+    OUTBOX_DB_USER: 'fake-outbox-user',
+    OUTBOX_DB_PASSWORD: 'fake-outbox-password-xyz',
+  };
+  const FAKE_TUNING: Record<string, string> = {
+    METERING_CAPTURE_TIMEOUT_MS: '2000',
+    METERING_CAPTURE_CHECK_INTERVAL_MS: '15000',
+    OUTBOX_DRAIN_BATCH_SIZE: '50',
+    OUTBOX_DRAIN_CONCURRENCY: '5',
+    OUTBOX_DRAIN_MAX_ATTEMPTS: '20',
+    OUTBOX_DRAIN_BASE_DELAY_MS: '1000',
+    OUTBOX_DRAIN_MAX_DELAY_MS: '300000',
+    OUTBOX_DRAIN_LEASE_MS: '300000',
+    OUTBOX_DRAIN_POLL_MS: '1000',
+    METERING_PUBLISH_CONFIRM_TIMEOUT_MS: '10000',
+    METERING_RECONNECT_INITIAL_MS: '1000',
+    METERING_RECONNECT_MAX_MS: '30000',
+  };
+  const FAKE_SINGLE_ATTEMPT: Record<string, string> = {
+    MAX_ATTEMPTS_PER_TARGET: '1',
+    MAX_TOTAL_EXECUTION_ATTEMPTS: '1',
+    MAX_FALLBACK_ATTEMPTS: '0',
+  };
+
+  function gatewaySpec(): ServiceSpec {
+    const spec = DEV_SERVICES.find((s) => s.name === 'model-gateway');
+    if (!spec) {
+      throw new Error('model-gateway spec missing');
+    }
+    return spec;
+  }
+
+  function otherSpecs(): ServiceSpec[] {
+    return DEV_SERVICES.filter((s) => s.name !== 'model-gateway');
+  }
+
+  function gatewayEnv(extra: Record<string, string> = {}): Record<string, string> {
+    return buildChildEnv(gatewaySpec(), { env: { ...DB_ENV, ...extra }, tokens: TOKENS });
+  }
+
+  it('1. forwards .env publishing=true to Model Gateway', () => {
+    expect(gatewayEnv({ ENABLE_USAGE_PUBLISHING: 'true' })['ENABLE_USAGE_PUBLISHING']).toBe('true');
+  });
+
+  it('2. forwards publishing=false unchanged', () => {
+    expect(gatewayEnv({ ENABLE_USAGE_PUBLISHING: 'false' })['ENABLE_USAGE_PUBLISHING']).toBe(
+      'false',
+    );
+  });
+
+  it('3. keeps absent publishing settings absent', () => {
+    const overlay = gatewayEnv();
+    for (const name of METERING_KEYS) {
+      expect(overlay[name], name).toBeUndefined();
+    }
+  });
+
+  it('4. lets process environment override the .env value', () => {
+    // buildChildEnv receives the already-merged launcher environment, in
+    // which process values win; the overlay must echo the merged value
+    // verbatim rather than re-reading any source.
+    expect(
+      gatewayEnv({ ENABLE_USAGE_PUBLISHING: 'false', EXTRA_MERGED: 'yes' })[
+        'ENABLE_USAGE_PUBLISHING'
+      ],
+    ).toBe('false');
+    expect(gatewayEnv({ ENABLE_USAGE_PUBLISHING: 'TRUE' })['ENABLE_USAGE_PUBLISHING']).toBe('TRUE');
+  });
+
+  it('5. passes invalid activation values through for the gateway parser', () => {
+    // The launcher must not normalize or reject; the gateway config parser
+    // owns validation and fails closed on anything but true/false.
+    expect(gatewayEnv({ ENABLE_USAGE_PUBLISHING: 'maybe' })['ENABLE_USAGE_PUBLISHING']).toBe(
+      'maybe',
+    );
+  });
+
+  it('6. forwards all five OUTBOX_DB_* settings to Model Gateway', () => {
+    const overlay = gatewayEnv({ ...FAKE_OUTBOX_DB });
+    for (const [name, value] of Object.entries(FAKE_OUTBOX_DB)) {
+      expect(overlay[name], name).toBe(value);
+    }
+  });
+
+  it('7. keeps outbox settings out of unrelated service overlays', () => {
+    for (const spec of otherSpecs()) {
+      const overlay = buildChildEnv(spec, {
+        env: { ...DB_ENV, ...FAKE_OUTBOX_DB },
+        tokens: TOKENS,
+      });
+      for (const name of Object.keys(FAKE_OUTBOX_DB)) {
+        expect(overlay[name], `${spec.name}:${name}`).toBeUndefined();
+      }
+      expect(overlay['ENABLE_USAGE_PUBLISHING'], spec.name).toBeUndefined();
+    }
+  });
+
+  it('8. forwards temporary single-attempt configuration', () => {
+    const overlay = gatewayEnv({ ...FAKE_SINGLE_ATTEMPT });
+    expect(overlay['MAX_ATTEMPTS_PER_TARGET']).toBe('1');
+    expect(overlay['MAX_TOTAL_EXECUTION_ATTEMPTS']).toBe('1');
+    expect(overlay['MAX_FALLBACK_ATTEMPTS']).toBe('0');
+  });
+
+  it('9. forwards drainer, publisher, capture and routing tuning', () => {
+    const overlay = gatewayEnv({ ...FAKE_TUNING, USAGE_RABBITMQ_EXCHANGE: 'oicunt.usage' });
+    for (const [name, value] of Object.entries({
+      ...FAKE_TUNING,
+      USAGE_RABBITMQ_EXCHANGE: 'oicunt.usage',
+    })) {
+      expect(overlay[name], name).toBe(value);
+    }
+  });
+
+  it('10. keeps existing Groq/RabbitMQ passthrough intact', () => {
+    const overlay = gatewayEnv({ GROQ_API_KEY: 'k', RABBITMQ_URL: 'amqp://x' });
+    expect(overlay['GROQ_API_KEY']).toBe('k');
+    expect(overlay['RABBITMQ_URL']).toBe('amqp://x');
+  });
+
+  it('11. preserves unrelated services previous environment contracts', () => {
+    const byName = new Map(DEV_SERVICES.map((s) => [s.name, s]));
+    const registry = byName.get('registry');
+    const orchestrator = byName.get('orchestrator');
+    if (!registry || !orchestrator) {
+      throw new Error('table incomplete');
+    }
+    const regEnv = buildChildEnv(registry, { env: { ...DB_ENV }, tokens: TOKENS });
+    expect(regEnv['DATABASE_NAME']).toBe('oicunt_ai');
+    expect(regEnv['PORT']).toBe('3001');
+    const orchEnv = buildChildEnv(orchestrator, { env: { ...DB_ENV }, tokens: TOKENS });
+    expect(orchEnv['DATABASE_HOST']).toBeUndefined();
+    expect(orchEnv['MODEL_REGISTRY_BASE_URL']).toBe('http://127.0.0.1:3001');
+  });
+
+  it('12. never logs metering secret values', async () => {
+    const canaryEnv = {
+      ...DB_ENV,
+      ...FAKE_OUTBOX_DB,
+      OUTBOX_DB_PASSWORD: 'canary-outbox-password-xyz',
+      ENABLE_USAGE_PUBLISHING: 'true',
+    };
+    const clock = fakeClock();
+    const logs: string[] = [];
+    const deps = {
+      spawn: (_spec: ServiceSpec, _env: Record<string, string>) => mockChild(7100, true),
+      checkPort: async (_port: number) => false,
+      probe: async (_url: string) => 200,
+      sleep: clock.sleep,
+      log: (line: string) => {
+        logs.push(line);
+      },
+      now: clock.now,
+      timeouts: { health: 5000, ready: 10000 },
+      intervalMs: 100,
+    };
+    const resolved = resolveTokenEnv(canaryEnv);
+    if (!resolved.ok) {
+      throw new Error('expected ok');
+    }
+    await startAll(deps, { env: canaryEnv, tokens: resolved.mapping });
+    for (const line of logs) {
+      expect(line).not.toContain('canary-outbox-password-xyz');
+    }
+  });
+});
+
 describe('probes and waits', () => {
   it('probeOnce maps status codes and transport failures', async () => {
     const okFetch = (async () => ({ status: 418 })) as unknown as typeof fetch;

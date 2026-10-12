@@ -117,6 +117,37 @@ export const TOKEN_NAMES = Object.freeze([
   'AI_ORCHESTRATOR_INTERNAL_TOKEN',
 ]);
 
+/**
+ * Model Gateway metering settings forwarded verbatim from the merged
+ * launcher environment. Presence-only forwarding: a configured value is
+ * passed through untouched (including an explicit 'false'), an absent
+ * value is never invented, so gateway defaults keep applying.
+ */
+export const MODEL_GATEWAY_METERING_KEYS = Object.freeze([
+  'ENABLE_USAGE_PUBLISHING',
+  'OUTBOX_DB_HOST',
+  'OUTBOX_DB_PORT',
+  'OUTBOX_DB_NAME',
+  'OUTBOX_DB_USER',
+  'OUTBOX_DB_PASSWORD',
+  'METERING_CAPTURE_TIMEOUT_MS',
+  'METERING_CAPTURE_CHECK_INTERVAL_MS',
+  'OUTBOX_DRAIN_BATCH_SIZE',
+  'OUTBOX_DRAIN_CONCURRENCY',
+  'OUTBOX_DRAIN_MAX_ATTEMPTS',
+  'OUTBOX_DRAIN_BASE_DELAY_MS',
+  'OUTBOX_DRAIN_MAX_DELAY_MS',
+  'OUTBOX_DRAIN_LEASE_MS',
+  'OUTBOX_DRAIN_POLL_MS',
+  'METERING_PUBLISH_CONFIRM_TIMEOUT_MS',
+  'METERING_RECONNECT_INITIAL_MS',
+  'METERING_RECONNECT_MAX_MS',
+  'USAGE_RABBITMQ_EXCHANGE',
+  'MAX_ATTEMPTS_PER_TARGET',
+  'MAX_TOTAL_EXECUTION_ATTEMPTS',
+  'MAX_FALLBACK_ATTEMPTS',
+]);
+
 export function resolveTokenEnv(env) {
   const shared = env['INTERNAL_SERVICE_TOKEN'];
   if (shared === undefined || String(shared).trim() === '') {
@@ -159,6 +190,18 @@ export function buildChildEnv(spec, ctx) {
   }
   if (spec.providerPassthrough === true) {
     for (const name of ['GROQ_API_KEY', 'GROQ_BASE_URL', 'RABBITMQ_URL']) {
+      if (env[name] !== undefined) {
+        overlay[name] = env[name];
+      }
+    }
+  }
+  if (spec.name === 'model-gateway') {
+    // Model Gateway metering contract: forward explicitly configured
+    // metering settings so the child honors the merged launcher
+    // environment (.env file with process-environment precedence). Only
+    // set values are forwarded — absent settings stay absent so gateway
+    // defaults (publishing disabled) keep applying.
+    for (const name of MODEL_GATEWAY_METERING_KEYS) {
       if (env[name] !== undefined) {
         overlay[name] = env[name];
       }
