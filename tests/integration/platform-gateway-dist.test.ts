@@ -76,6 +76,9 @@ describe('resolvePlatformGatewayDist', () => {
     const href = resolvePlatformGatewayDist({
       repoRoots: [root],
       readRevision: () => OTHER_SHA,
+      // Explicit non-CI branch: this test must exercise the warning path
+      // even when the surrounding runner exports CI=true (as GitHub does).
+      ci: '',
       warn: (message) => warnings.push(message),
     });
     expect(href).toContain('services/api-gateway/dist/index.js');
