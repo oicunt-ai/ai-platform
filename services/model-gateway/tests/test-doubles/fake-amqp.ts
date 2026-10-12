@@ -85,6 +85,21 @@ export class FakeAmqpChannel {
     this.listeners.set(event, list);
   }
 
+  off(event: string, listener: (arg?: unknown) => void): void {
+    const list = this.listeners.get(event);
+    if (list !== undefined) {
+      const index = list.indexOf(listener);
+      if (index >= 0) {
+        list.splice(index, 1);
+      }
+    }
+  }
+
+  /** Observable listener fan-out for lifecycle assertions. */
+  listenerCountFor(event: string): number {
+    return this.listeners.get(event)?.length ?? 0;
+  }
+
   emitReturn(messageId: string): void {
     for (const listener of this.listeners.get('return') ?? []) {
       listener({ properties: { messageId } });

@@ -139,8 +139,19 @@ export class RabbitMqUsagePublisher implements UsagePublisherPort, OutboxSenderP
       );
     }
     // Serialize through one confirm channel so waitForConfirms and
-    // basic.return correlate to exactly this event.
-    const run = this.sendChain.then(() => this.sendOnChannel(channel, event));
+    // basic.return correlate to exactly this event. The live channel is
+    // (re)selected when the queued send actually begins: a reconnect between
+    // queueing and execution must never deliver on a stale channel.
+    const run = this.sendChain.then(() => {
+      const live = this.connection.getChannel();
+      if (!live) {
+        throw new UsagePublishError(
+          event.eventId,
+          this.connection.isBlocked() ? 'broker connection is blocked' : 'broker unavailable',
+        );
+      }
+      return this.sendOnChannel(live, event);
+    });
     // The chain itself must never reject (else later sends stall forever).
     this.sendChain = run.then(
       () => undefined,
@@ -153,44 +164,25 @@ export class RabbitMqUsagePublisher implements UsagePublisherPort, OutboxSenderP
     if (this.closed) {
       throw new UsagePublishError(event.eventId, 'publisher is closed');
     }
-    const body = Buffer.from(JSON.stringify(event));
-    let published: boolean;
-    try {
-      published = channel.publish(this.exchange, ROUTING_KEY, body, {
-        persistent: true,
-        contentType: 'application/json',
-        messageId: event.eventId,
-        correlationId: event.lineage.correlationId,
-        mandatory: true,
-      });
-    } catch (error) {
-      throw new UsagePublishError(
-        event.eventId,
-        `publish call failed: ${error instanceof Error ? error.message : String(error)}`,
-      );
-    }
-    if (!published) {
-      await this.waitForDrainOrClose(channel, event.eventId);
-    }
 
     return new Promise<void>((resolve, reject) => {
       const entry: PendingSend = { eventId: event.eventId, resolve, reject };
       this.pending.set(event.eventId, entry);
-      const settle = (fn: () => void): void => {
-        if (this.pending.get(event.eventId) === entry) {
-          this.pending.delete(event.eventId);
-        }
-        fn();
-      };
-      const onReturn = (): void => {
-        settle(() =>
-          reject(
-            new UsageUnroutableError(
-              event.eventId,
-              'broker returned the message as unroutable under mandatory publishing',
+      // Single-shot settlement: exactly one of confirm, return, timeout, or
+      // connection loss wins. Late broker events after settlement are
+      // ignored (their listeners are removed below).
+      let settled = false;
+      const onReturn = (message: { properties?: { messageId?: unknown } | undefined }): void => {
+        if (message.properties?.messageId === event.eventId) {
+          settle(() =>
+            reject(
+              new UsageUnroutableError(
+                event.eventId,
+                'broker returned the message as unroutable under mandatory publishing',
+              ),
             ),
-          ),
-        );
+          );
+        }
       };
       const onClose = (): void => {
         settle(() =>
@@ -202,18 +194,6 @@ export class RabbitMqUsagePublisher implements UsagePublisherPort, OutboxSenderP
           ),
         );
       };
-      channel.on('return', (message) => {
-        if (message.properties?.messageId === event.eventId) {
-          onReturn();
-        }
-      });
-      channel.on('close', onClose);
-      const timer = setTimeout(() => {
-        onCloseTimeout();
-      }, this.confirmTimeoutMs);
-      // Never hold the process open for a confirmation wait: explicit
-      // close() and the outbox drainer own shutdown sequencing.
-      timer.unref?.();
       const onCloseTimeout = (): void => {
         settle(() =>
           reject(
@@ -224,40 +204,111 @@ export class RabbitMqUsagePublisher implements UsagePublisherPort, OutboxSenderP
           ),
         );
       };
-      void channel
-        .waitForConfirms()
-        .then(() => {
-          clearTimeout(timer);
-          settle(() => resolve());
-        })
-        .catch((error: unknown) => {
-          clearTimeout(timer);
-          settle(() =>
-            reject(
-              new UsagePublishError(
-                event.eventId,
-                `broker confirmation failed: ${error instanceof Error ? error.message : String(error)}`,
+      const timer = setTimeout(onCloseTimeout, this.confirmTimeoutMs);
+      // Never hold the process open for a confirmation wait: explicit
+      // close() and the outbox drainer own shutdown sequencing.
+      timer.unref?.();
+      const cleanup = (): void => {
+        clearTimeout(timer);
+        channel.off('return', onReturn);
+        channel.off('close', onClose);
+      };
+      const settle = (fn: () => void): void => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        if (this.pending.get(event.eventId) === entry) {
+          this.pending.delete(event.eventId);
+        }
+        cleanup();
+        fn();
+      };
+      // Listeners are registered before publishing so no broker signal in
+      // the window between publish and registration can be missed.
+      channel.on('return', onReturn);
+      channel.on('close', onClose);
+
+      const proceedToConfirm = (): void => {
+        void channel
+          .waitForConfirms()
+          .then(() => {
+            settle(() => resolve());
+          })
+          .catch((error: unknown) => {
+            settle(() =>
+              reject(
+                new UsagePublishError(
+                  event.eventId,
+                  `broker confirmation failed: ${error instanceof Error ? error.message : String(error)}`,
+                ),
               ),
-            ),
-          );
+            );
+          });
+      };
+
+      const body = Buffer.from(JSON.stringify(event));
+      let published: boolean;
+      try {
+        published = channel.publish(this.exchange, ROUTING_KEY, body, {
+          persistent: true,
+          contentType: 'application/json',
+          messageId: event.eventId,
+          correlationId: event.lineage.correlationId,
+          mandatory: true,
         });
+      } catch (error) {
+        settle(() =>
+          reject(
+            new UsagePublishError(
+              event.eventId,
+              `publish call failed: ${error instanceof Error ? error.message : String(error)}`,
+            ),
+          ),
+        );
+        return;
+      }
+      if (!published) {
+        void this.waitForDrainOrClose(channel, event.eventId).then(
+          () => proceedToConfirm(),
+          (error: unknown) => {
+            settle(() =>
+              reject(
+                error instanceof Error
+                  ? error
+                  : new UsagePublishError(event.eventId, 'write buffer drain failed'),
+              ),
+            );
+          },
+        );
+        return;
+      }
+      proceedToConfirm();
     });
   }
 
   private async waitForDrainOrClose(channel: ManagedChannel, eventId: string): Promise<void> {
     await new Promise<void>((resolve, reject) => {
       const timer = setTimeout(() => {
+        cleanup();
         reject(new UsagePublishError(eventId, 'write buffer drain timed out'));
       }, this.drainTimeoutMs);
       timer.unref?.();
-      channel.on('drain', () => {
+      const cleanup = (): void => {
         clearTimeout(timer);
+        channel.off('drain', onDrain);
+        channel.off('close', onClosed);
+      };
+      const onDrain = (): void => {
+        cleanup();
         resolve();
-      });
-      channel.on('close', () => {
-        clearTimeout(timer);
+      };
+      const onClosed = (): void => {
+        cleanup();
         reject(new UsagePublishError(eventId, 'channel closed while write buffer full'));
-      });
+      };
+      channel.on('drain', onDrain);
+      channel.on('close', onClosed);
     });
   }
 

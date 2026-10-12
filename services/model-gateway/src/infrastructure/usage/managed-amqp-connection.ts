@@ -36,6 +36,16 @@ export interface ManagedChannel {
     event: 'return',
     listener: (message: { properties?: { messageId?: unknown } | undefined }) => void,
   ): void;
+  /**
+   * Detach a previously attached listener. The publisher removes every
+   * per-send listener once its operation settles so repeated sends cannot
+   * accumulate stale handlers on a shared channel.
+   */
+  off(event: 'close' | 'error' | 'drain', listener: (reason?: unknown) => void): void;
+  off(
+    event: 'return',
+    listener: (message: { properties?: { messageId?: unknown } | undefined }) => void,
+  ): void;
 }
 
 export interface ManagedConnection {

@@ -13,7 +13,7 @@ import {
   UsagePublishError,
   UsageUnroutableError,
 } from '../../src/infrastructure/usage/publish-errors.js';
-import { sequencedConnect } from '../test-doubles/fake-amqp.js';
+import { FakeAmqpChannel, sequencedConnect } from '../test-doubles/fake-amqp.js';
 
 const YIELD_SLEEP = async (_ms: number) => {
   await new Promise((resolve) => setTimeout(resolve, 1));
@@ -38,7 +38,7 @@ function testEvent(key: string): UsageEvent {
 
 function publisherWith(
   connector: ReturnType<typeof sequencedConnect>,
-  options?: { confirmTimeoutMs?: number },
+  options?: { confirmTimeoutMs?: number; drainTimeoutMs?: number },
 ) {
   const connection = new ManagedAmqpConnection({
     url: 'amqp://broker:5672',
@@ -50,7 +50,10 @@ function publisherWith(
   const publisher = new RabbitMqUsagePublisher({
     url: 'amqp://broker:5672',
     exchange: 'oicunt.usage',
-    options: { confirmTimeoutMs: options?.confirmTimeoutMs ?? 5000 },
+    options: {
+      confirmTimeoutMs: options?.confirmTimeoutMs ?? 5000,
+      drainTimeoutMs: options?.drainTimeoutMs,
+    },
     connection,
   });
   return { publisher, connection };
@@ -282,6 +285,211 @@ describe('RabbitMqUsagePublisher', () => {
     await publisher.start();
     expect(Date.now() - started).toBeLessThan(1000);
     expect(publisher.isReady()).toBe(false);
+    await publisher.close();
+  });
+});
+
+describe('RabbitMqUsagePublisher reliability hardening', () => {
+  it('1. selects a fresh channel for sends queued across a reconnect', async () => {
+    const connector = sequencedConnect(0);
+    const { publisher, connection } = publisherWith(connector);
+    await publisher.start();
+    await waitFor(() => publisher.isReady(), 'publisher becomes ready');
+    const liveChannel = connector.created[0]?.channels[0];
+    const freshChannel = new FakeAmqpChannel();
+    // First selection sees the live channel; the queued send must use the
+    // channel selected when it actually begins, not the stale one.
+    let selections = 0;
+    connection.getChannel = () => {
+      selections += 1;
+      return (selections === 1 ? liveChannel! : freshChannel).asManaged();
+    };
+
+    await publisher.send(testEvent('fresh'));
+
+    expect(liveChannel?.published).toHaveLength(0);
+    expect(freshChannel.published.map((m) => m.options?.messageId)).toEqual(['usage_test-fresh']);
+    await publisher.close();
+  });
+
+  it('2. removes per-send listeners after each settled send', async () => {
+    const connector = sequencedConnect(0);
+    const { publisher } = publisherWith(connector);
+    await publisher.start();
+    await waitFor(() => publisher.isReady(), 'publisher becomes ready');
+    const channel = connector.created[0]?.channels[0];
+    // The managed connection owns one long-lived 'close' listener; per-send
+    // listeners must come and go around that baseline.
+    const closeBaseline = channel?.listenerCountFor('close') ?? 0;
+
+    for (const key of ['a', 'b', 'c', 'd', 'e']) {
+      await publisher.send(testEvent(key));
+      expect(channel?.listenerCountFor('return')).toBe(0);
+      expect(channel?.listenerCountFor('close')).toBe(closeBaseline);
+    }
+    expect(channel?.published).toHaveLength(5);
+    await publisher.close();
+  });
+
+  it('3. resolves repeated publications of the same eventId independently', async () => {
+    const connector = sequencedConnect(0);
+    const { publisher } = publisherWith(connector);
+    await publisher.start();
+    await waitFor(() => publisher.isReady(), 'publisher becomes ready');
+    const channel = connector.created[0]?.channels[0];
+    const closeBaseline = channel?.listenerCountFor('close') ?? 0;
+
+    await publisher.send(testEvent('same'));
+    await publisher.send(testEvent('same'));
+    await expect(
+      Promise.all([publisher.send(testEvent('same')), publisher.send(testEvent('same'))]),
+    ).resolves.toEqual([undefined, undefined]);
+
+    expect(channel?.published).toHaveLength(4);
+    expect(channel?.listenerCountFor('return')).toBe(0);
+    expect(channel?.listenerCountFor('close')).toBe(closeBaseline);
+    await publisher.close();
+  });
+
+  it('4. rejects on mandatory return before confirmation without waiting', async () => {
+    const connector = sequencedConnect(0);
+    const { publisher } = publisherWith(connector, { confirmTimeoutMs: 5000 });
+    await publisher.start();
+    await waitFor(() => publisher.isReady(), 'publisher becomes ready');
+    const channel = connector.created[0]?.channels[0];
+    channel!.confirmMode = 'manual';
+    const closeBaseline = channel?.listenerCountFor('close') ?? 0;
+
+    const sending = publisher.send(testEvent('a'));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    channel!.emitReturn('usage_test-a');
+
+    await expect(sending).rejects.toBeInstanceOf(UsageUnroutableError);
+    // A parked manual confirm arriving afterwards must not settle anything.
+    channel!.confirmNext();
+    expect(channel?.listenerCountFor('return')).toBe(0);
+    expect(channel?.listenerCountFor('close')).toBe(closeBaseline);
+    await publisher.close();
+  });
+
+  it('5. cleans up listeners after a confirmation timeout', async () => {
+    const connector = sequencedConnect(0);
+    const { publisher } = publisherWith(connector, { confirmTimeoutMs: 30 });
+    await publisher.start();
+    await waitFor(() => publisher.isReady(), 'publisher becomes ready');
+    const channel = connector.created[0]?.channels[0];
+    channel!.confirmBehavior = 'never';
+    const closeBaseline = channel?.listenerCountFor('close') ?? 0;
+
+    await expect(publisher.send(testEvent('a'))).rejects.toMatchObject({
+      name: 'UsagePublishError',
+      retryable: true,
+    });
+    expect(channel?.listenerCountFor('return')).toBe(0);
+    expect(channel?.listenerCountFor('close')).toBe(closeBaseline);
+    // The publisher remains usable for later sends.
+    channel!.confirmBehavior = 'confirm';
+    await publisher.send(testEvent('b'));
+    expect(channel?.published).toHaveLength(2);
+    await publisher.close();
+  });
+
+  it('6. cleans up listeners after channel closure mid-send and recovers', async () => {
+    const connector = sequencedConnect(0);
+    const { publisher } = publisherWith(connector);
+    await publisher.start();
+    await waitFor(() => publisher.isReady(), 'publisher becomes ready');
+    const channel = connector.created[0]?.channels[0];
+    channel!.confirmBehavior = 'never';
+    const closeBaseline = channel?.listenerCountFor('close') ?? 0;
+
+    const sending = publisher.send(testEvent('a'));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    channel!.emitClose();
+
+    await expect(sending).rejects.toMatchObject({ name: 'UsagePublishError', retryable: true });
+    expect(channel?.listenerCountFor('return')).toBe(0);
+    expect(channel?.listenerCountFor('close')).toBe(closeBaseline);
+
+    await waitFor(() => publisher.isReady(), 'publisher ready again');
+    await publisher.send(testEvent('b'));
+    expect(connector.created.length).toBeGreaterThanOrEqual(2);
+    await publisher.close();
+  });
+
+  it('7. bounds write-buffer backpressure with a drain timeout', async () => {
+    const connector = sequencedConnect(0);
+    const { publisher } = publisherWith(connector, { drainTimeoutMs: 30 });
+    await publisher.start();
+    await waitFor(() => publisher.isReady(), 'publisher becomes ready');
+    const channel = connector.created[0]?.channels[0];
+    channel!.publishReturnValue = false;
+    const closeBaseline = channel?.listenerCountFor('close') ?? 0;
+
+    await expect(publisher.send(testEvent('a'))).rejects.toMatchObject({
+      name: 'UsagePublishError',
+      retryable: true,
+    });
+    expect(channel?.listenerCountFor('drain')).toBe(0);
+    expect(channel?.listenerCountFor('close')).toBe(closeBaseline);
+    await publisher.close();
+  });
+
+  it('8. rejects queued sends on close without stranding promises', async () => {
+    const connector = sequencedConnect(0);
+    const { publisher } = publisherWith(connector);
+    await publisher.start();
+    await waitFor(() => publisher.isReady(), 'publisher becomes ready');
+    const channel = connector.created[0]?.channels[0];
+    channel!.confirmMode = 'manual';
+
+    const first = publisher.send(testEvent('a'));
+    const second = publisher.send(testEvent('b'));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    await publisher.close();
+
+    await expect(first).rejects.toMatchObject({ name: 'UsagePublishError', retryable: true });
+    await expect(second).rejects.toMatchObject({ name: 'UsagePublishError', retryable: true });
+  });
+
+  it('9. fast-fails sends queued during an outage and succeeds after reconnect', async () => {
+    const connector = sequencedConnect(0);
+    const { publisher } = publisherWith(connector);
+    await publisher.start();
+    await waitFor(() => publisher.isReady(), 'publisher becomes ready');
+    connector.created[0]?.channels[0]?.emitClose();
+
+    // Invalidation is synchronous: the pre-check fast-fails without queueing.
+    await expect(publisher.send(testEvent('outage'))).rejects.toMatchObject({
+      name: 'UsagePublishError',
+      retryable: true,
+    });
+    await waitFor(() => publisher.isReady(), 'publisher ready again');
+    await publisher.send(testEvent('recovered'));
+    expect(connector.created.length).toBeGreaterThanOrEqual(2);
+    const latest = connector.created[connector.created.length - 1]?.channels[0];
+    expect(latest?.published.map((m) => m.options?.messageId)).toEqual(['usage_test-recovered']);
+    await publisher.close();
+  });
+
+  it('10. ignores late broker events after settlement', async () => {
+    const connector = sequencedConnect(0);
+    const { publisher } = publisherWith(connector);
+    await publisher.start();
+    await waitFor(() => publisher.isReady(), 'publisher becomes ready');
+    const channel = connector.created[0]?.channels[0];
+    const closeBaseline = channel?.listenerCountFor('close') ?? 0;
+
+    await publisher.send(testEvent('a'));
+    // Late return and close for an already-settled send must be ignored.
+    channel!.emitReturn('usage_test-a');
+    await publisher.send(testEvent('b'));
+    expect(channel?.published.map((m) => m.options?.messageId)).toEqual([
+      'usage_test-a',
+      'usage_test-b',
+    ]);
+    expect(channel?.listenerCountFor('return')).toBe(0);
+    expect(channel?.listenerCountFor('close')).toBe(closeBaseline);
     await publisher.close();
   });
 });
