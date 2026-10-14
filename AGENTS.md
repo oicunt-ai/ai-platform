@@ -17,7 +17,7 @@ runtimes, MCP integration, embeddings, Memory and GenAI observability.
   independent from the company platform — never duplicate company-wide
   auth, gateway, billing or generic business logic here.
 - **`platform`** (sibling): owns the public Gateway, identity, admission
-  and the authoritative Usage ledger. This repo only *publishes* usage
+  and the authoritative Usage ledger. This repo only _publishes_ usage
   events (Model Gateway outbox); the former `services/usage` duplicate was
   removed.
 - **`billy`** (sibling): standalone product; consumes the public Gateway,
