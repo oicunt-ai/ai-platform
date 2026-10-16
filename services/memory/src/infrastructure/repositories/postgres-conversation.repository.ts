@@ -243,7 +243,9 @@ export class PostgresConversationRepository implements ConversationRepositoryPor
     }
     if (patch.metadata !== undefined) {
       params.push(JSON.stringify(patch.metadata));
-      updates.push(`metadata = $${params.length}`);
+      // Shallow JSONB merge so partial updates (e.g. `pinned`) keep unrelated
+      // metadata keys; mirrors the in-memory repository's `{ ...old, ...patch }`.
+      updates.push(`metadata = COALESCE(metadata, '{}'::jsonb) || $${params.length}::jsonb`);
     }
     if (patch.status !== undefined) {
       params.push(patch.status);
