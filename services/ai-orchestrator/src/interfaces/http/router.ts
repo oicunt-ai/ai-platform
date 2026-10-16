@@ -103,6 +103,19 @@ export function createHttpRouter(
       return;
     }
 
+    const conversationMatch = pathname.match(
+      /^\/internal\/v1\/orchestrator\/conversations\/([^/]+)$/,
+    );
+    if ((method === 'PATCH' || method === 'DELETE') && conversationMatch?.[1]) {
+      await deps.resourcesController.conversation(
+        req,
+        res,
+        context,
+        decodeURIComponent(conversationMatch[1]),
+      );
+      return;
+    }
+
     // 3. Chat Route
     if (pathname === '/internal/v1/orchestrator/chat') {
       if (method === 'POST') {

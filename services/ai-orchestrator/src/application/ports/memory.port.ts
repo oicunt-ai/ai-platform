@@ -63,6 +63,21 @@ export interface MemoryPort {
     context: MemoryCallContext,
     signal?: AbortSignal | undefined,
   ): Promise<unknown>;
+
+  /** Renames or re-metadata's a conversation (ownership enforced by Memory). */
+  updateConversation?(
+    conversationId: string,
+    body: unknown,
+    context: MemoryCallContext,
+    signal?: AbortSignal | undefined,
+  ): Promise<unknown>;
+
+  /** Soft-deletes a conversation (ownership enforced by Memory). */
+  deleteConversation?(
+    conversationId: string,
+    context: MemoryCallContext,
+    signal?: AbortSignal | undefined,
+  ): Promise<unknown>;
   /**
    * Hydrates bounded conversation context history from the Memory Service.
    */

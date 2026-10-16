@@ -58,6 +58,35 @@ export class HttpMemoryClient implements MemoryPort {
     );
   }
 
+  public async updateConversation(
+    conversationId: string,
+    body: unknown,
+    context: MemoryCallContext,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    return this.requestJson(
+      `/internal/v1/memory/conversations/${encodeURIComponent(conversationId)}`,
+      'PATCH',
+      context,
+      body,
+      signal,
+    );
+  }
+
+  public async deleteConversation(
+    conversationId: string,
+    context: MemoryCallContext,
+    signal?: AbortSignal,
+  ): Promise<unknown> {
+    return this.requestJson(
+      `/internal/v1/memory/conversations/${encodeURIComponent(conversationId)}`,
+      'DELETE',
+      context,
+      undefined,
+      signal,
+    );
+  }
+
   public async getContext(
     conversationId: string,
     options: ContextRetrievalOptions,
@@ -198,7 +227,7 @@ export class HttpMemoryClient implements MemoryPort {
 
   private async requestJson(
     path: string,
-    method: 'GET' | 'POST',
+    method: 'GET' | 'POST' | 'PATCH' | 'DELETE',
     context: MemoryCallContext,
     body?: unknown,
     signal?: AbortSignal,

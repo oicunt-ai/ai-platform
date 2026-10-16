@@ -75,6 +75,25 @@ class RecordingMemory extends FakeMemory {
     this.resourceCalls.push({ context: { ...context }, conversationId });
     return { messages: [], hasMore: false };
   }
+
+  public async updateConversation(
+    conversationId: string,
+    body: unknown,
+    context: MemoryCallContext,
+    _signal?: AbortSignal,
+  ): Promise<unknown> {
+    this.resourceCalls.push({ context: { ...context }, conversationId, body });
+    return { id: conversationId, title: 'renamed' };
+  }
+
+  public async deleteConversation(
+    conversationId: string,
+    context: MemoryCallContext,
+    _signal?: AbortSignal,
+  ): Promise<unknown> {
+    this.resourceCalls.push({ context: { ...context }, conversationId });
+    return { deleted: true, conversationId, hard: false };
+  }
 }
 
 describe('HTTP Interfaces - Resource Proxy Signed Context', () => {
@@ -245,6 +264,58 @@ describe('HTTP Interfaces - Resource Proxy Signed Context', () => {
     expect(forwarded?.tenantId).toBe('tnt_proxy');
     expect(forwarded?.userId).toBe('usr_proxy');
     expect(forwarded?.correlationId).toBe('corr-proxy-3');
+  });
+
+  it('forwards tenant/user context on conversation rename', async () => {
+    const res = await fetch(`${baseUrl}/internal/v1/orchestrator/conversations/conv_rename`, {
+      method: 'PATCH',
+      headers: {
+        'Content-Type': 'application/json',
+        ...signedHeaders({
+          tenantId: 'tnt_proxy',
+          userId: 'usr_proxy',
+          correlationId: 'corr-proxy-4',
+        }),
+      },
+      body: JSON.stringify({ title: 'Project notes' }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { success: boolean; data: { id: string } };
+    expect(body.success).toBe(true);
+    expect(body.data.id).toBe('conv_rename');
+    expect(memory.resourceCalls).toHaveLength(1);
+    expect(memory.resourceCalls[0]?.conversationId).toBe('conv_rename');
+    expect(memory.resourceCalls[0]?.body).toEqual({ title: 'Project notes' });
+    expect(memory.resourceCalls[0]?.context.userId).toBe('usr_proxy');
+  });
+
+  it('forwards tenant/user context on conversation deletion', async () => {
+    const res = await fetch(`${baseUrl}/internal/v1/orchestrator/conversations/conv_delete`, {
+      method: 'DELETE',
+      headers: signedHeaders({
+        tenantId: 'tnt_proxy',
+        userId: 'usr_proxy',
+        correlationId: 'corr-proxy-5',
+      }),
+    });
+
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { success: boolean; data: { deleted: boolean } };
+    expect(body.data.deleted).toBe(true);
+    expect(memory.resourceCalls).toHaveLength(1);
+    expect(memory.resourceCalls[0]?.conversationId).toBe('conv_delete');
+    expect(memory.resourceCalls[0]?.context.tenantId).toBe('tnt_proxy');
+  });
+
+  it('fails closed for conversation mutations with no user context', async () => {
+    const res = await fetch(`${baseUrl}/internal/v1/orchestrator/conversations/conv_nouser`, {
+      method: 'DELETE',
+      headers: signedHeaders({ tenantId: 'tnt_proxy', correlationId: 'corr-proxy-no-user-del' }),
+    });
+
+    expect(res.status).toBeGreaterThanOrEqual(400);
+    expect(memory.resourceCalls).toHaveLength(0);
   });
 
   it('rejects mismatched signed user context on resource requests', async () => {

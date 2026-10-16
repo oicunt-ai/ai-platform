@@ -51,6 +51,40 @@ export class ResourcesController {
     }
   }
 
+  async conversation(
+    req: IncomingMessage,
+    res: ServerResponse,
+    context: RequestContext,
+    conversationId: string,
+  ): Promise<void> {
+    try {
+      const callContext = this.memoryContext(context);
+      if (req.method === 'PATCH') {
+        if (!this.memory.updateConversation) throw new Error('Conversation update unavailable');
+        sendJsonResponse(
+          res,
+          200,
+          await this.memory.updateConversation(
+            conversationId,
+            await parseJsonBody(req),
+            callContext,
+          ),
+          context,
+        );
+        return;
+      }
+      if (!this.memory.deleteConversation) throw new Error('Conversation deletion unavailable');
+      sendJsonResponse(
+        res,
+        200,
+        await this.memory.deleteConversation(conversationId, callContext),
+        context,
+      );
+    } catch (error) {
+      sendErrorResponse(res, error, context);
+    }
+  }
+
   async messages(
     res: ServerResponse,
     context: RequestContext,
